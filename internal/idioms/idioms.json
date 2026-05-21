@@ -1,0 +1,352 @@
+{
+  "meta": {
+    "source_root": "/tmp/tldr/pages",
+    "sources_used": 25,
+    "per_tool_cap": 3,
+    "tools_covered": 25
+  },
+  "idioms": {
+    "bat": [
+      {
+        "intent": "Pretty print the contents of one or more files to `stdout`",
+        "cmd": "bat \u003cpath/to/file1 path/to/file2 ...\u003e"
+      },
+      {
+        "intent": "Concatenate several files into the target file",
+        "cmd": "bat \u003cpath/to/file1 path/to/file2 ...\u003e \u003e \u003cpath/to/target_file\u003e"
+      },
+      {
+        "intent": "Remove decorations and disable paging",
+        "cmd": "bat -pp \u003cpath/to/file\u003e"
+      }
+    ],
+    "btm": [
+      {
+        "intent": "Show the default layout (CPU, memory, temperatures, disk, network, and processes)",
+        "cmd": "btm"
+      },
+      {
+        "intent": "Enable basic mode, removing charts and condensing data (similar to `top`)",
+        "cmd": "btm -b"
+      },
+      {
+        "intent": "Use big dots instead of small ones in charts",
+        "cmd": "btm -m"
+      }
+    ],
+    "choose": [
+      {
+        "intent": "Print the 5th item from a line (starting from 0)",
+        "cmd": "choose \u003c4\u003e"
+      },
+      {
+        "intent": "Print the first, 3rd, and 5th item from a line, where items are separated by ':' instead of whitespace",
+        "cmd": "choose -f '\u003c:\u003e' \u003c0\u003e \u003c2\u003e \u003c4\u003e"
+      },
+      {
+        "intent": "Print everything from the 2nd to 5th item on the line, including the 5th",
+        "cmd": "choose \u003c1\u003e:\u003c4\u003e"
+      }
+    ],
+    "delta": [
+      {
+        "intent": "Compare files or directories",
+        "cmd": "delta \u003cpath/to/old_file_or_directory\u003e \u003cpath/to/new_file_or_directory\u003e"
+      },
+      {
+        "intent": "Compare files or directories, showing the line numbers",
+        "cmd": "delta -n \u003cpath/to/old_file_or_directory\u003e \u003cpath/to/new_file_or_directory\u003e"
+      },
+      {
+        "intent": "Compare files or directories, showing the differences side by side",
+        "cmd": "delta -s \u003cpath/to/old_file_or_directory\u003e \u003cpath/to/new_file_or_directory\u003e"
+      }
+    ],
+    "duf": [
+      {
+        "intent": "List accessible devices",
+        "cmd": "duf"
+      },
+      {
+        "intent": "List everything (such as pseudo, duplicate, or inaccessible filesystems)",
+        "cmd": "duf --all"
+      },
+      {
+        "intent": "Only show specified devices or mount points",
+        "cmd": "duf \u003cpath/to/directory1 path/to/directory2 ...\u003e"
+      }
+    ],
+    "dust": [
+      {
+        "intent": "Display information for the current directory",
+        "cmd": "dust"
+      },
+      {
+        "intent": "Display information about one or more directories",
+        "cmd": "dust \u003cpath/to/directory1 path/to/directory2 ...\u003e"
+      },
+      {
+        "intent": "Display 30 directories (defaults to 21)",
+        "cmd": "dust -n 30"
+      }
+    ],
+    "entr": [
+      {
+        "intent": "Rebuild with `make` if any file in any subdirectory changes",
+        "cmd": "\u003cag --files-with-matches\u003e | entr \u003cmake\u003e"
+      },
+      {
+        "intent": "Rebuild and test with `make` if any `.c` source files in the current directory change",
+        "cmd": "ls *.c | entr '\u003cmake \u0026\u0026 make test\u003e'"
+      },
+      {
+        "intent": "Send a `SIGTERM` to any previously spawned ruby subprocesses before executing `ruby main.rb`",
+        "cmd": "ls *.rb | entr -r \u003cruby main.rb\u003e"
+      }
+    ],
+    "exa": [
+      {
+        "intent": "List files one per line",
+        "cmd": "exa -1"
+      },
+      {
+        "intent": "List all files, including hidden files",
+        "cmd": "exa -a"
+      },
+      {
+        "intent": "Long format list (permissions, ownership, size, and modification date) of all files",
+        "cmd": "exa -l -a"
+      }
+    ],
+    "eza": [
+      {
+        "intent": "List files one per line",
+        "cmd": "eza -1"
+      },
+      {
+        "intent": "List all files, including hidden files",
+        "cmd": "eza -a"
+      },
+      {
+        "intent": "Long format list (permissions, ownership, size, and modification date) of all files",
+        "cmd": "eza -al"
+      }
+    ],
+    "fd": [
+      {
+        "intent": "Recursively find files matching a specific pattern in the current directory",
+        "cmd": "fd \"\u003cregex\u003e\""
+      },
+      {
+        "intent": "Find files in a specific directory",
+        "cmd": "fd \"\u003cregex\u003e\" \u003cpath/to/directory\u003e"
+      },
+      {
+        "intent": "Find files with a specific extension",
+        "cmd": "fd -e \u003ctxt\u003e"
+      }
+    ],
+    "fzf": [
+      {
+        "intent": "Start `fzf` on all files in the specified directory",
+        "cmd": "find \u003cpath/to/directory\u003e -type f | fzf"
+      },
+      {
+        "intent": "Start `fzf` for running processes",
+        "cmd": "ps aux | fzf"
+      },
+      {
+        "intent": "Select multiple files with `\u003cShift Tab\u003e` and write to a file",
+        "cmd": "find \u003cpath/to/directory\u003e -type f | fzf -m \u003e \u003cpath/to/file\u003e"
+      }
+    ],
+    "gron": [
+      {
+        "intent": "Process `JSON` file into individual assignments",
+        "cmd": "gron \u003cpath/to/file|url\u003e"
+      },
+      {
+        "intent": "Don't sort output data",
+        "cmd": "gron --no-sort \u003cpath/to/file|url\u003e"
+      },
+      {
+        "intent": "Disable certificate validation",
+        "cmd": "gron -k \u003curl\u003e"
+      }
+    ],
+    "hexyl": [
+      {
+        "intent": "Print the hexadecimal representation of a file",
+        "cmd": "hexyl \u003cpath/to/file\u003e"
+      },
+      {
+        "intent": "Print the hexadecimal representation of the first n bytes of a file",
+        "cmd": "hexyl -n \u003cn\u003e \u003cpath/to/file\u003e"
+      }
+    ],
+    "hyperfine": [
+      {
+        "intent": "Run a basic benchmark, performing at least 10 runs",
+        "cmd": "hyperfine '\u003cmake\u003e'"
+      },
+      {
+        "intent": "Run a comparative benchmark",
+        "cmd": "hyperfine '\u003cmake target1\u003e' '\u003cmake target2\u003e'"
+      },
+      {
+        "intent": "Change minimum number of benchmarking runs",
+        "cmd": "hyperfine -m \u003c7\u003e '\u003cmake\u003e'"
+      }
+    ],
+    "jq": [
+      {
+        "intent": "Execute a specific expression only using the `jq` binary (print a colored and formatted JSON output)",
+        "cmd": "jq '.' \u003cpath/to/file.json\u003e"
+      },
+      {
+        "intent": "Execute a specific script",
+        "cmd": "cat path/to/file.json | jq -f \u003cpath/to/script.jq\u003e"
+      },
+      {
+        "intent": "Pass specific arguments",
+        "cmd": "cat path/to/file.json | jq \u003c--arg \"name1\" \"value1\" --arg \"name2\" \"value2\" ...\u003e '\u003c. + $ARGS.named\u003e'"
+      }
+    ],
+    "mlr": [
+      {
+        "intent": "Pretty-print a CSV file in a tabular format",
+        "cmd": "mlr --icsv --opprint cat \u003cexample.csv\u003e"
+      },
+      {
+        "intent": "Receive JSON data and pretty print the output",
+        "cmd": "echo '{\"key\":\"value\"}' | mlr --ijson --opprint cat"
+      },
+      {
+        "intent": "Sort alphabetically on a field",
+        "cmd": "mlr --icsv --opprint sort -f \u003cfield\u003e \u003cexample.csv\u003e"
+      }
+    ],
+    "parallel": [
+      {
+        "intent": "Gzip several files at once, using all cores",
+        "cmd": "parallel gzip ::: \u003cpath/to/file1 path/to/file2 ...\u003e"
+      },
+      {
+        "intent": "Read arguments from `stdin`, run 4 jobs at once",
+        "cmd": "ls *.txt | parallel -j 4 gzip"
+      },
+      {
+        "intent": "Convert JPEG images to PNG using replacement strings",
+        "cmd": "parallel convert {} {.}.png ::: *.jpg"
+      }
+    ],
+    "procs": [
+      {
+        "intent": "List all processes showing the PID, user, CPU usage, memory usage, and the command which started them",
+        "cmd": "procs"
+      },
+      {
+        "intent": "List all processes as a tree",
+        "cmd": "procs --tree"
+      },
+      {
+        "intent": "List information about processes, if the commands which started them contain Zsh",
+        "cmd": "procs \u003czsh\u003e"
+      }
+    ],
+    "pv": [
+      {
+        "intent": "Print the contents of the file and display a progress bar",
+        "cmd": "pv \u003cpath/to/file\u003e"
+      },
+      {
+        "intent": "Measure the speed and amount of data flow between pipes (`--size` is optional)",
+        "cmd": "\u003ccommand1\u003e | pv -s \u003cexpected_amount_of_data_for_eta\u003e | \u003ccommand2\u003e"
+      },
+      {
+        "intent": "Filter a file, see both progress and amount of output data",
+        "cmd": "pv -cN in \u003cpath/to/file.txt\u003e | grep \u003cpattern\u003e | pv -cN out \u003e \u003cpath/to/filtered_file.txt\u003e"
+      }
+    ],
+    "rg": [
+      {
+        "intent": "Recursively search current directory for a pattern (`regex`)",
+        "cmd": "rg \u003cpattern\u003e"
+      },
+      {
+        "intent": "Recursively search for a pattern in a file or directory",
+        "cmd": "rg \u003cpattern\u003e \u003cpath/to/file_or_directory\u003e"
+      },
+      {
+        "intent": "Search for a literal string pattern",
+        "cmd": "rg -F -- \u003cstring\u003e"
+      }
+    ],
+    "sd": [
+      {
+        "intent": "Trim some whitespace using a `regex` (output stream: `stdout`)",
+        "cmd": "echo 'lorem ipsum 23   ' | sd '\\s+$' ''"
+      },
+      {
+        "intent": "Replace words using capture groups (output stream: `stdout`)",
+        "cmd": "echo 'cargo +nightly watch' | sd '(\\w+)\\s+\\+(\\w+)\\s+(\\w+)' 'cmd: $1, channel: $2, subcmd: $3'"
+      },
+      {
+        "intent": "Find and replace in a specific file (output stream: `stdout`)",
+        "cmd": "sd -p '\u003cwindow.fetch\u003e' '\u003cfetch\u003e' \u003cpath/to/file.js\u003e"
+      }
+    ],
+    "sponge": [
+      {
+        "intent": "Append file content to the source file",
+        "cmd": "cat \u003cpath/to/file\u003e | sponge -a \u003cpath/to/file\u003e"
+      },
+      {
+        "intent": "Remove all lines starting with # in a file",
+        "cmd": "grep -v '^\u003c#\u003e' \u003cpath/to/file\u003e | sponge \u003cpath/to/file\u003e"
+      }
+    ],
+    "watchexec": [
+      {
+        "intent": "Call `ls -la` when any file in the current directory changes",
+        "cmd": "watchexec ls -la"
+      },
+      {
+        "intent": "Run `make` when any JavaScript, CSS, and HTML file in the current directory changes",
+        "cmd": "watchexec -e \u003cjs,css,html\u003e make"
+      },
+      {
+        "intent": "Run `make` when any file in the `lib` or `src` directory changes",
+        "cmd": "watchexec -w \u003clib\u003e -w \u003csrc\u003e \u003cmake\u003e"
+      }
+    ],
+    "xsv": [
+      {
+        "intent": "Inspect the headers of a file",
+        "cmd": "xsv headers \u003cpath/to/file.csv\u003e"
+      },
+      {
+        "intent": "Count the number of entries",
+        "cmd": "xsv count \u003cpath/to/file.csv\u003e"
+      },
+      {
+        "intent": "Get an overview of the shape of entries",
+        "cmd": "xsv stats \u003cpath/to/file.csv\u003e | xsv table"
+      }
+    ],
+    "yq": [
+      {
+        "intent": "Output a YAML file, in pretty-print format (v4+)",
+        "cmd": "yq eval \u003cpath/to/file.yaml\u003e"
+      },
+      {
+        "intent": "Output a YAML file, in pretty-print format (v3)",
+        "cmd": "yq read \u003cpath/to/file.yaml\u003e -C"
+      },
+      {
+        "intent": "Output the first element in a YAML file that contains only an array (v4+)",
+        "cmd": "yq eval '.[0]' \u003cpath/to/file.yaml\u003e"
+      }
+    ]
+  }
+}

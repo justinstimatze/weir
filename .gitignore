@@ -1,0 +1,41 @@
+# Go build outputs
+/weir
+/bin/
+*.exe
+*.test
+*.out
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Ephemeral mining artifacts (regenerable; large)
+/tmp/
+
+# Anthropic API key file — keep out of git
+.env
+.envrc
+
+# tldr-pages clone used by build-idioms (regenerable)
+/tldr/
+
+# Eval cache (deterministic API responses keyed by content hash;
+# regenerable, sometimes large)
+/data/eval/cache/
+
+# Settings backups (weir creates these; commit none)
+*.weir-bak-*
+
+# defn's per-project DB (unrelated tool)
+.defn/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Personal project journal — stays in working dir, never committed.
+# Was tracked in early commits; will drop out at squash-before-public time.
+/SESSION.md

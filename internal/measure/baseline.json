@@ -1,0 +1,484 @@
+{
+  "meta": {
+    "elapsed_seconds": 19.1,
+    "files_glob": [
+      "~/.claude/projects/*/*.jsonl",
+      "~/.claude/projects/*/subagents/*.jsonl"
+    ],
+    "heuristic_note": "Pipeline splitting: naive top-level | scan, skipping pipes inside '...' and \"...\" with backslash-escape awareness. ||, command substitutions, and process substitutions are not specially handled. First-binary parsing strips leading (/{/$/!, looks past var=val and wrappers like sudo/time/env/xargs."
+  },
+  "totals": {
+    "bash_calls": 25216,
+    "piped_calls": 12528,
+    "piped_pct": 49.68,
+    "stage_distribution": {
+      "1": 12688,
+      "2": 8847,
+      "3": 2557,
+      "4+": 1124
+    }
+  },
+  "top_binaries": [
+    [
+      "head",
+      9346
+    ],
+    [
+      "cd",
+      4998
+    ],
+    [
+      "grep",
+      4575
+    ],
+    [
+      "tail",
+      4533
+    ],
+    [
+      "git",
+      2580
+    ],
+    [
+      "ls",
+      1535
+    ],
+    [
+      "python3",
+      1520
+    ],
+    [
+      "go",
+      1507
+    ],
+    [
+      "wc",
+      965
+    ],
+    [
+      "python",
+      715
+    ],
+    [
+      "cat",
+      699
+    ],
+    [
+      "echo",
+      587
+    ],
+    [
+      "find",
+      403
+    ],
+    [
+      "sort",
+      379
+    ],
+    [
+      "#",
+      356
+    ],
+    [
+      "gh",
+      342
+    ],
+    [
+      "xargs",
+      308
+    ],
+    [
+      "awk",
+      295
+    ],
+    [
+      "sleep",
+      285
+    ],
+    [
+      "sed",
+      257
+    ],
+    [
+      "export",
+      244
+    ],
+    [
+      "npm",
+      237
+    ],
+    [
+      "tmux",
+      212
+    ],
+    [
+      "jq",
+      177
+    ],
+    [
+      "for",
+      174
+    ],
+    [
+      "rm",
+      148
+    ],
+    [
+      "mkdir",
+      138
+    ],
+    [
+      "curl",
+      125
+    ],
+    [
+      "uv",
+      82
+    ],
+    [
+      "ps",
+      81
+    ],
+    [
+      "cp",
+      80
+    ],
+    [
+      "which",
+      77
+    ],
+    [
+      "cut",
+      75
+    ],
+    [
+      "set",
+      69
+    ],
+    [
+      "ruff",
+      68
+    ],
+    [
+      "node",
+      67
+    ]
+  ],
+  "modern_vs_classic": {
+    "rg_vs_grep": [
+      0,
+      4575
+    ],
+    "fd_vs_find": [
+      0,
+      403
+    ],
+    "bat_vs_cat": [
+      0,
+      699
+    ],
+    "sd_vs_sed": [
+      0,
+      257
+    ],
+    "mlr_vs_awk": [
+      0,
+      295
+    ],
+    "eza_exa_vs_ls": [
+      0,
+      1535
+    ]
+  },
+  "modern_tool_counts": {
+    "jq": 177
+  },
+  "antipatterns": {
+    "grep_pipe_head": 810,
+    "ls_pipe_grep": 225,
+    "grep_pipe_wc_l": 99,
+    "cat_file_head_UUOC": 55,
+    "redir_pipe_tee": 53,
+    "sort_pipe_uniq_c": 41,
+    "awk_pipe_awk": 38,
+    "cat_file_grep_UUOC": 35,
+    "cat_file_tail_UUOC": 18,
+    "find_xargs_grep": 16,
+    "find_exec_semicolon": 13,
+    "sed_pipe_sed": 9,
+    "cat_file_jq": 7,
+    "cat_file_wc_UUOC": 2,
+    "find_exec_plus": 1
+  },
+  "top_template_2": [
+    [
+      "cd\u2192head",
+      1841
+    ],
+    [
+      "grep\u2192head",
+      1647
+    ],
+    [
+      "ls\u2192head",
+      663
+    ],
+    [
+      "git\u2192tail",
+      480
+    ],
+    [
+      "cd\u2192tail",
+      459
+    ],
+    [
+      "go\u2192tail",
+      417
+    ],
+    [
+      "python\u2192tail",
+      297
+    ],
+    [
+      "go\u2192head",
+      287
+    ],
+    [
+      "find\u2192head",
+      277
+    ],
+    [
+      "npm\u2192tail",
+      215
+    ],
+    [
+      "git\u2192head",
+      206
+    ],
+    [
+      "cd\u2192grep",
+      196
+    ],
+    [
+      "grep\u2192grep",
+      166
+    ],
+    [
+      "cat\u2192head",
+      147
+    ],
+    [
+      "echo\u2192head",
+      144
+    ],
+    [
+      "export\u2192xargs",
+      144
+    ],
+    [
+      "go\u2192xargs",
+      133
+    ],
+    [
+      "cat\u2192tail",
+      114
+    ],
+    [
+      "ls\u2192grep",
+      109
+    ],
+    [
+      "echo\u2192grep",
+      90
+    ],
+    [
+      "gh\u2192head",
+      85
+    ],
+    [
+      "python3\u2192tail",
+      84
+    ],
+    [
+      "go\u2192grep",
+      72
+    ],
+    [
+      "#\u2192head",
+      63
+    ],
+    [
+      "export\u2192tail",
+      55
+    ],
+    [
+      "ps\u2192grep",
+      53
+    ]
+  ],
+  "top_template_3": [
+    [
+      "cd\u2192head\u2192head",
+      204
+    ],
+    [
+      "ls\u2192head\u2192head",
+      147
+    ],
+    [
+      "cd\u2192grep\u2192head",
+      133
+    ],
+    [
+      "grep\u2192grep\u2192head",
+      118
+    ],
+    [
+      "grep\u2192head\u2192head",
+      96
+    ],
+    [
+      "find\u2192head\u2192head",
+      90
+    ],
+    [
+      "npm\u2192tail\u2192tail",
+      90
+    ],
+    [
+      "echo\u2192head\u2192head",
+      76
+    ],
+    [
+      "git\u2192tail\u2192tail",
+      74
+    ],
+    [
+      "cd\u2192tail\u2192tail",
+      63
+    ],
+    [
+      "go\u2192tail\u2192tail",
+      61
+    ],
+    [
+      "ps\u2192grep\u2192grep",
+      52
+    ],
+    [
+      "go\u2192head\u2192tail",
+      49
+    ],
+    [
+      "go\u2192xargs\u2192grep",
+      46
+    ],
+    [
+      "echo\u2192grep\u2192head",
+      39
+    ],
+    [
+      "go\u2192grep\u2192head",
+      38
+    ],
+    [
+      "ls\u2192grep\u2192head",
+      36
+    ],
+    [
+      "go\u2192head\u2192grep",
+      33
+    ],
+    [
+      "echo\u2192grep\u2192grep",
+      33
+    ],
+    [
+      "go\u2192head\u2192head",
+      31
+    ],
+    [
+      "git\u2192tail\u2192head",
+      31
+    ],
+    [
+      "grep\u2192grep\u2192grep",
+      29
+    ],
+    [
+      "python\u2192tail\u2192tail",
+      28
+    ],
+    [
+      "cd\u2192tail\u2192head",
+      24
+    ],
+    [
+      "export\u2192xargs\u2192python3",
+      24
+    ],
+    [
+      "du\u2192sort\u2192head",
+      23
+    ],
+    [
+      "cd\u2192head\u2192tail",
+      21
+    ]
+  ],
+  "jq": {
+    "total_invocations": 177,
+    "from_file_or_stdin_direct": 107,
+    "from_pipe": 70,
+    "piped_to_next_stage": 69,
+    "top_next_stage": [
+      [
+        "head",
+        42
+      ],
+      [
+        "grep",
+        8
+      ],
+      [
+        "sort",
+        7
+      ],
+      [
+        "sed",
+        5
+      ],
+      [
+        "jq",
+        3
+      ],
+      [
+        "tail",
+        3
+      ],
+      [
+        "wc",
+        1
+      ]
+    ]
+  },
+  "time_series_all": [
+    {
+      "month": "2026-03",
+      "bash_calls": 1403
+    },
+    {
+      "month": "2026-04",
+      "bash_calls": 16899
+    },
+    {
+      "month": "2026-05",
+      "bash_calls": 6914
+    }
+  ],
+  "time_series_last6": [
+    "2026-03",
+    "2026-04",
+    "2026-05"
+  ]
+}

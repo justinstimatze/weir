@@ -1,0 +1,177 @@
+weir synthetic eval
+  N samples / (model, prompt, condition): 3
+  treatment system-prompt size: 3993 chars (~998 tokens)
+  missing cache entries: 0
+
+======================================================================
+MODEL: claude-opus-4-7
+  control samples: 156; treatment samples: 156
+======================================================================
+
+  per-rule fire RATE (samples-with-hit / total)
+  rule                        control  treatment      delta
+  ------------------------------------------------------------
+  find-exec-semi                10.9%        0.0%      -10.9pp
+  ps-grep-vs-pgrep               7.7%        0.0%       -7.7pp
+  grep-head-trim                 5.1%        0.6%       -4.5pp
+  grep-wc                        5.1%        0.0%       -5.1pp
+  which-vs-command-v             4.5%        1.9%       -2.6pp
+  ls-pipe-wc-l                   2.6%        0.0%       -2.6pp
+  ls-grep                        2.6%        0.0%       -2.6pp
+  find-xargs-no-null             1.3%        0.0%       -1.3pp
+
+  first-binary counts (interesting tools only)
+  binary            control  treatment      delta       tier
+  ----------------------------------------------------------------------
+  rg                     32         99        +67     modern
+  find                   95          2        -93    classic
+  fd                      0         86        +86     modern
+  awk                    62          8        -54    classic
+  grep                   60          1        -59    classic
+  procs                   0         39        +39     modern
+  tail                   31         31         +0    classic
+  mlr                     0         30        +30     modern
+  ls                     24          0        -24    classic
+  head                   13         17         +4    classic
+  ps                     17          0        -17    classic
+  eza                     0         11        +11     modern
+  jq                     10          7         -3     modern
+  bat                     0         10        +10     modern
+  hyperfine               1          9         +8     modern
+  which                   7          3         -4    classic
+  sed                     3          0         -3    classic
+  wc                      3          3         +0    classic
+  hexyl                   0          3         +3     modern
+  entr                    0          1         +1     modern
+  cat                     1          0         -1    classic
+  sd                      0          1         +1     modern
+
+  AGGREGATE modern-vs-classic first-binary counts:
+    control:   modern=  43  classic= 316  modern_share=12.0%
+    treatment: modern= 296  classic=  65  modern_share=82.0%
+    DELTA modern-share: +70.0pp
+
+======================================================================
+MODEL: claude-sonnet-4-6
+  control samples: 156; treatment samples: 156
+======================================================================
+
+  per-rule fire RATE (samples-with-hit / total)
+  rule                        control  treatment      delta
+  ------------------------------------------------------------
+  ps-grep-vs-pgrep               7.1%        0.0%       -7.1pp
+  find-exec-semi                 5.8%        0.0%       -5.8pp
+  grep-head-trim                 4.5%        0.0%       -4.5pp
+  grep-wc                        3.8%        0.0%       -3.8pp
+  which-vs-command-v             3.2%        1.9%       -1.3pp
+  find-xargs-no-null             3.2%        0.0%       -3.2pp
+  ls-pipe-wc-l                   1.9%        0.0%       -1.9pp
+  head-tail-range                1.3%        0.6%       -0.6pp
+  uuoc                           0.6%        0.0%       -0.6pp
+  ls-grep                        0.6%        0.0%       -0.6pp
+
+  first-binary counts (interesting tools only)
+  binary            control  treatment      delta       tier
+  ----------------------------------------------------------------------
+  rg                     17         89        +72     modern
+  grep                   87          1        -86    classic
+  find                   72          1        -71    classic
+  tail                   43         16        -27    classic
+  awk                    42         17        -25    classic
+  fd                      0         30        +30     modern
+  procs                   0         22        +22     modern
+  ps                     20          7        -13    classic
+  ls                     15          1        -14    classic
+  head                   13         15         +2    classic
+  batcat                  0         13        +13     modern
+  mlr                     0         12        +12     modern
+  jq                     11          8         -3     modern
+  fdfind                  0         10        +10     modern
+  which                   5          3         -2    classic
+  hyperfine               3          5         +2     modern
+  cat                     4          0         -4    classic
+  sed                     3          0         -3    classic
+  wc                      2          3         +1    classic
+  hexyl                   0          3         +3     modern
+  eza                     0          3         +3     modern
+  entr                    0          3         +3     modern
+  sd                      0          3         +3     modern
+  pv                      0          1         +1     modern
+
+  AGGREGATE modern-vs-classic first-binary counts:
+    control:   modern=  31  classic= 306  modern_share=9.2%
+    treatment: modern= 202  classic=  64  modern_share=75.9%
+    DELTA modern-share: +66.7pp
+
+======================================================================
+MODEL: claude-haiku-4-5-20251001
+  control samples: 156; treatment samples: 156
+======================================================================
+
+  per-rule fire RATE (samples-with-hit / total)
+  rule                        control  treatment      delta
+  ------------------------------------------------------------
+  find-exec-semi                 8.3%        0.6%       -7.7pp
+  ps-grep-vs-pgrep               5.8%        1.9%       -3.8pp
+  grep-head-trim                 3.8%        0.0%       -3.8pp
+  ls-pipe-wc-l                   3.8%        1.3%       -2.6pp
+  which-vs-command-v             3.8%        1.3%       -2.6pp
+  grep-wc                        3.2%        0.0%       -3.2pp
+  ls-grep                        1.3%        0.0%       -1.3pp
+  sort-uniq                      0.6%        0.0%       -0.6pp
+  uuoc                           0.0%        0.6%       +0.6pp
+  head-tail-range                0.6%        0.0%       -0.6pp
+
+  first-binary counts (interesting tools only)
+  binary            control  treatment      delta       tier
+  ----------------------------------------------------------------------
+  fd                      0        103       +103     modern
+  rg                      5         96        +91     modern
+  find                   69         10        -59    classic
+  grep                   59          4        -55    classic
+  tail                   36         31         -5    classic
+  awk                    34         12        -22    classic
+  procs                   0         29        +29     modern
+  ls                     19          4        -15    classic
+  mlr                     0         17        +17     modern
+  jq                      4         13         +9     modern
+  ps                     12          6         -6    classic
+  bat                     0         11        +11     modern
+  head                   10         10         +0    classic
+  eza                     0         10        +10     modern
+  which                   6          2         -4    classic
+  wc                      3          5         +2    classic
+  hyperfine               0          5         +5     modern
+  duf                     0          4         +4     modern
+  sed                     2          3         +1    classic
+  hexyl                   0          3         +3     modern
+  cat                     3          2         -1    classic
+  entr                    0          2         +2     modern
+  sd                      0          2         +2     modern
+  delta                   0          1         +1     modern
+
+  AGGREGATE modern-vs-classic first-binary counts:
+    control:   modern=   9  classic= 253  modern_share=3.4%
+    treatment: modern= 296  classic=  89  modern_share=76.9%
+    DELTA modern-share: +73.4pp
+
+======================================================================
+CROSS-MODEL SUMMARY
+======================================================================
+model                              control_mod%   treatment_mod%      delta
+------------------------------------------------------------------------
+claude-opus-4-7                           12.0%            82.0%     +70.0pp
+claude-sonnet-4-6                          9.2%            75.9%     +66.7pp
+claude-haiku-4-5-20251001                  3.4%            76.9%     +73.4pp
+
+model                             control_fires  treatment_fires      delta
+------------------------------------------------------------------------
+claude-opus-4-7                              62                4        -58
+claude-sonnet-4-6                            50                4        -46
+claude-haiku-4-5-20251001                    49                9        -40
+
+Interpretation:
+  - control_mod%: share of first-binary tokens that are modern tools, no weir injection.
+  - treatment_mod%: same, with weir's inject text in the system prompt.
+  - rule_fires: total samples in which at least one weir rule fires.
+  - 'block'-action rules fire here only via advisory detection — production block-and-retry not simulated.

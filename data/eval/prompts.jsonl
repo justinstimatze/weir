@@ -1,0 +1,52 @@
+{"id": "log-01", "category": "log-analysis", "prompt": "I just ran a Python script that crashed. Stderr is in /tmp/eval-stderr.log. Show me the first 10 lines that mention 'error' or 'exception' (case-insensitive).", "expected_rules": ["grep-head-trim", "uuoc"]}
+{"id": "log-02", "category": "log-analysis", "prompt": "How many lines in /var/log/nginx/access.log are 5xx server errors? Just the count.", "expected_rules": ["grep-wc"]}
+{"id": "log-03", "category": "log-analysis", "prompt": "What's the single most common HTTP status code in the last 1000 lines of /var/log/nginx/access.log?", "expected_rules": []}
+{"id": "log-04", "category": "log-analysis", "prompt": "Find the IP address that hit the API the most times today in /var/log/nginx/access.log.", "expected_rules": []}
+{"id": "log-05", "category": "log-analysis", "prompt": "Show me requests that took longer than 1 second in /var/log/myapp/slow.log (request_time field is column 8, space-separated).", "expected_rules": []}
+{"id": "log-06", "category": "log-analysis", "prompt": "Tail the application log /var/log/myapp/app.log and only show me lines that contain 'ERROR' or 'WARN'.", "expected_rules": []}
+{"id": "log-07", "category": "log-analysis", "prompt": "I redirected my build output to /tmp/build.log. Show me the last 50 lines.", "expected_rules": []}
+{"id": "log-08", "category": "log-analysis", "prompt": "Count distinct user IDs that appeared in /var/log/myapp/access.log today (user_id is the last column).", "expected_rules": []}
+{"id": "files-01", "category": "file-inspection", "prompt": "How many .py files are in the current directory (not recursive — just top level)?", "expected_rules": ["ls-pipe-wc-l", "ls-grep"]}
+{"id": "files-02", "category": "file-inspection", "prompt": "Find the 5 largest files in this repo and show their sizes.", "expected_rules": ["find-xargs-no-null"]}
+{"id": "files-03", "category": "file-inspection", "prompt": "List all log files in /tmp from today.", "expected_rules": ["ls-grep"]}
+{"id": "files-04", "category": "file-inspection", "prompt": "How many subdirectories are under /home/user/projects/? Just the count.", "expected_rules": ["ls-pipe-wc-l"]}
+{"id": "files-05", "category": "file-inspection", "prompt": "Show the file modification times for everything in ./scripts/ sorted newest first.", "expected_rules": []}
+{"id": "files-06", "category": "file-inspection", "prompt": "Find any file in this repo larger than 10MB.", "expected_rules": []}
+{"id": "files-07", "category": "file-inspection", "prompt": "Delete all .pyc files in this tree recursively, in a way that handles filenames with spaces.", "expected_rules": ["find-xargs-no-null", "find-exec-semi"]}
+{"id": "files-08", "category": "file-inspection", "prompt": "Show me the disk usage of the top 10 largest subdirectories of /var/.", "expected_rules": []}
+{"id": "search-01", "category": "search", "prompt": "Find any occurrence of the literal string 'TODO' in this codebase under src/.", "expected_rules": []}
+{"id": "search-02", "category": "search", "prompt": "Where is the function 'main' defined under cmd/? Show file + line. Limit to first 3 matches.", "expected_rules": ["grep-head-trim"]}
+{"id": "search-03", "category": "search", "prompt": "Which test files in this repo mention the word 'integration' anywhere in their content?", "expected_rules": ["find-xargs-no-null"]}
+{"id": "search-04", "category": "search", "prompt": "Count occurrences of the literal string 'TODO' across the codebase.", "expected_rules": ["grep-wc"]}
+{"id": "search-05", "category": "search", "prompt": "Search this repo for any Go function whose name starts with 'New'. Show first 20 matches.", "expected_rules": ["grep-head-trim"]}
+{"id": "search-06", "category": "search", "prompt": "Find all .md files in this repo that contain a code block (look for triple-backticks).", "expected_rules": []}
+{"id": "search-07", "category": "search", "prompt": "Look for any deprecated API call patterns (regex: 'OldAPI.[A-Z][a-zA-Z]+') across the codebase, case-sensitive, with line numbers.", "expected_rules": []}
+{"id": "proc-01", "category": "process", "prompt": "Is there a python3 process currently running on this machine?", "expected_rules": ["ps-grep-vs-pgrep"]}
+{"id": "proc-02", "category": "process", "prompt": "Check whether ripgrep is installed on this host. Just tell me yes/no with the path if yes.", "expected_rules": ["which-vs-command-v"]}
+{"id": "proc-03", "category": "process", "prompt": "Show me which user owns each tmux session currently running on this host.", "expected_rules": []}
+{"id": "proc-04", "category": "process", "prompt": "How many node processes are currently running?", "expected_rules": ["ps-grep-vs-pgrep", "grep-wc"]}
+{"id": "proc-05", "category": "process", "prompt": "Kill all running 'webpack-dev-server' processes.", "expected_rules": ["ps-grep-vs-pgrep"]}
+{"id": "proc-06", "category": "process", "prompt": "Show me the 5 processes using the most CPU right now.", "expected_rules": []}
+{"id": "proc-07", "category": "process", "prompt": "Does this user have docker available on their PATH?", "expected_rules": ["which-vs-command-v"]}
+{"id": "proc-08", "category": "process", "prompt": "Find the PID of the process listening on port 8080.", "expected_rules": []}
+{"id": "dev-01", "category": "dev-workflow", "prompt": "Run `go test ./...` and only show me the last 30 lines of output.", "expected_rules": []}
+{"id": "dev-02", "category": "dev-workflow", "prompt": "Build the Go project and capture stderr to /tmp/build.log. If it fails, show the last 20 lines of /tmp/build.log.", "expected_rules": []}
+{"id": "dev-03", "category": "dev-workflow", "prompt": "Show me lines 100 through 150 of cmd/weir/main.go.", "expected_rules": ["head-tail-range"]}
+{"id": "dev-04", "category": "dev-workflow", "prompt": "Find all Go test files that currently fail when I run `go test ./...`. Just give me the package names.", "expected_rules": []}
+{"id": "dev-05", "category": "dev-workflow", "prompt": "Re-run the test suite every time any .go file in ./internal changes.", "expected_rules": []}
+{"id": "dev-06", "category": "dev-workflow", "prompt": "Time how long `make build` takes; compare it to `make build-fast`.", "expected_rules": []}
+{"id": "dev-07", "category": "dev-workflow", "prompt": "Show me the diff of changes between HEAD and origin/main for any .go file under internal/.", "expected_rules": []}
+{"id": "json-01", "category": "data-shape", "prompt": "I have a file /tmp/users.json that's an array of {id, name, email} objects. Extract just the email field from each, one per line.", "expected_rules": ["uuoc"]}
+{"id": "json-02", "category": "data-shape", "prompt": "Pretty-print every .json file in the current directory tree.", "expected_rules": ["find-xargs-no-null"]}
+{"id": "json-03", "category": "data-shape", "prompt": "Convert /tmp/data.csv (header in first row) to JSON-lines and write to /tmp/data.jsonl.", "expected_rules": []}
+{"id": "json-04", "category": "data-shape", "prompt": "Pretty-print the CSV file /tmp/sales.csv as a table I can read in the terminal.", "expected_rules": []}
+{"id": "json-05", "category": "data-shape", "prompt": "What's the mean of the 'response_time_ms' column in /tmp/metrics.csv? Just the number.", "expected_rules": []}
+{"id": "net-01", "category": "network", "prompt": "Fetch https://api.example.com/v1/status and extract the 'health' field from the JSON response.", "expected_rules": []}
+{"id": "net-02", "category": "network", "prompt": "Check whether https://example.com responds with a 200; just print YES or NO.", "expected_rules": []}
+{"id": "net-03", "category": "network", "prompt": "Which TCP ports are currently listening on this host?", "expected_rules": []}
+{"id": "git-01", "category": "git", "prompt": "Show me the most recent 5 commits to this repo with their full messages.", "expected_rules": []}
+{"id": "git-02", "category": "git", "prompt": "Which files were changed in the last 3 commits?", "expected_rules": []}
+{"id": "git-03", "category": "git", "prompt": "Find all the local branches that aren't yet merged into main.", "expected_rules": []}
+{"id": "misc-01", "category": "misc", "prompt": "What's the SHA-256 of every .tar.gz file in /tmp?", "expected_rules": ["find-xargs-no-null"]}
+{"id": "misc-02", "category": "misc", "prompt": "Replace every occurrence of 'oldname' with 'newname' across all .py files in this repo.", "expected_rules": []}
+{"id": "misc-03", "category": "misc", "prompt": "Hex-dump the first 256 bytes of /usr/bin/ls.", "expected_rules": []}

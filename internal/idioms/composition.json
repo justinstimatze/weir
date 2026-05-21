@@ -1,0 +1,157 @@
+{
+  "meta": {
+    "note": "Hand-curated cross-tool composition idioms — goal -> pipeline. tldr-pages teaches what ONE tool does; this file teaches how tools COMPOSE for a goal. Add entries here as you discover patterns worth surfacing. Each entry's `tools` list is the set of binaries that must be present for the idiom to be injected (so we don't suggest mlr to hosts without it). Edit by hand; nothing rebuilds this file."
+  },
+  "composition": [
+    {
+      "intent": "count unique values of a column across many lines (e.g. caller IPs, status codes)",
+      "cmd": "rg -o 'PATTERN' file | sort | uniq -c | sort -rn | head",
+      "tools": ["rg", "sort"]
+    },
+    {
+      "intent": "tally HTTP status codes in an access log (col 9 of nginx default format)",
+      "cmd": "mlr --inidx --ifs ' ' cut -f 9 access.log | sort | uniq -c | sort -rn",
+      "tools": ["mlr", "sort"]
+    },
+    {
+      "intent": "find files modified in last 24h and grep them in one shot",
+      "cmd": "fd --changed-within 1d -t f -X rg 'PATTERN'",
+      "tools": ["fd", "rg"]
+    },
+    {
+      "intent": "show the 20 largest files in a tree",
+      "cmd": "fd -t f -X du -b {} + | sort -rn | head -20",
+      "tools": ["fd", "sort"]
+    },
+    {
+      "intent": "show directory tree by size, depth-limited",
+      "cmd": "dust -d 2",
+      "tools": ["dust"]
+    },
+    {
+      "intent": "pretty-print every JSON file in a tree",
+      "cmd": "fd -e json -X jq . {} +",
+      "tools": ["fd", "jq"]
+    },
+    {
+      "intent": "extract one field across many JSON-lines files",
+      "cmd": "fd -e jsonl -X cat | jq -r '.field'",
+      "tools": ["fd", "jq"]
+    },
+    {
+      "intent": "convert a JSON array of objects to CSV",
+      "cmd": "jq -r '(.[0] | keys_unsorted) as $k | $k, (.[] | [.[$k[]]])[] | @csv' file.json",
+      "tools": ["jq"]
+    },
+    {
+      "intent": "pretty-print a CSV in the terminal",
+      "cmd": "mlr --c2p cat file.csv",
+      "tools": ["mlr"]
+    },
+    {
+      "intent": "compute mean/min/max of a CSV column",
+      "cmd": "mlr --c2p stats1 -a mean,min,max -f column file.csv",
+      "tools": ["mlr"]
+    },
+    {
+      "intent": "interactively pick a file and open it in $EDITOR",
+      "cmd": "fd -t f | fzf | xargs -r $EDITOR",
+      "tools": ["fd", "fzf"]
+    },
+    {
+      "intent": "interactively pick a process and kill it",
+      "cmd": "procs | fzf | awk '{print $1}' | xargs -r kill",
+      "tools": ["procs", "fzf"]
+    },
+    {
+      "intent": "interactively pick a git branch and check it out",
+      "cmd": "git branch --format='%(refname:short)' | fzf | xargs -r git checkout",
+      "tools": ["fzf"]
+    },
+    {
+      "intent": "re-run tests on every source-file change",
+      "cmd": "fd -e go | entr -c go test ./...",
+      "tools": ["fd", "entr"]
+    },
+    {
+      "intent": "benchmark two command variants, with warmup + stats",
+      "cmd": "hyperfine --warmup 3 'cmd1' 'cmd2'",
+      "tools": ["hyperfine"]
+    },
+    {
+      "intent": "find all processes matching a pattern (atomic, no grep|grep dance)",
+      "cmd": "pgrep -af 'PATTERN'",
+      "tools": []
+    },
+    {
+      "intent": "kill all processes matching a pattern",
+      "cmd": "pkill -f 'PATTERN'",
+      "tools": []
+    },
+    {
+      "intent": "run N copies of a command in parallel over a list of args",
+      "cmd": "parallel -j N CMD ::: arg1 arg2 arg3",
+      "tools": ["parallel"]
+    },
+    {
+      "intent": "process every line of stdin in parallel",
+      "cmd": "rg -l 'X' | parallel -j 4 some-tool {}",
+      "tools": ["rg", "parallel"]
+    },
+    {
+      "intent": "show side-by-side colored diff (or use as git diff pager)",
+      "cmd": "delta a.txt b.txt    # or: git config core.pager delta",
+      "tools": ["delta"]
+    },
+    {
+      "intent": "tail a log with live colored highlighting of matches",
+      "cmd": "tail -F app.log | rg --color=always --line-buffered 'WARN|ERROR'",
+      "tools": ["rg"]
+    },
+    {
+      "intent": "write to a file you're also reading (avoid clobbering with truncation)",
+      "cmd": "rg 'X' file | sponge file",
+      "tools": ["rg", "sponge"]
+    },
+    {
+      "intent": "monitor bytes streaming through a pipe",
+      "cmd": "cmd1 | pv | cmd2",
+      "tools": ["pv"]
+    },
+    {
+      "intent": "extract a line range from a file (read-only-what-you-need)",
+      "cmd": "sed -n '100,150p' file    # or: awk 'NR>=100 && NR<=150' file",
+      "tools": []
+    },
+    {
+      "intent": "find then act in-place across files (safer than -exec ; or | xargs)",
+      "cmd": "fd -e go -X gofmt -w",
+      "tools": ["fd"]
+    },
+    {
+      "intent": "watch a command repeatedly with diff highlighting",
+      "cmd": "watch -d -n 2 'CMD'",
+      "tools": []
+    },
+    {
+      "intent": "show free disk in human form across all mounts",
+      "cmd": "duf",
+      "tools": ["duf"]
+    },
+    {
+      "intent": "hex-dump a file with color, paged",
+      "cmd": "hexyl file | less -R",
+      "tools": ["hexyl"]
+    },
+    {
+      "intent": "syntax-highlighted view in terminal (NOT for piping into other tools)",
+      "cmd": "bat file.go    # use plain `cat` when piping",
+      "tools": ["bat"]
+    },
+    {
+      "intent": "simple in-place substitution across files",
+      "cmd": "fd -e py -X sd 'old' 'new'",
+      "tools": ["fd", "sd"]
+    }
+  ]
+}
