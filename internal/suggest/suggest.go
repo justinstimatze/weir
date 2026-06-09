@@ -5,9 +5,15 @@
 // error -> silent exit 0; never break a Bash call.
 //
 // v0 limitations (documented, not bugs):
-//   - Regex over the raw command string; shell quoting is NOT parsed. A literal
-//     pipe inside a quoted pattern (e.g. `grep "a|b" file`) will trigger any
-//     rule that looks for `|`. False positive class accepted for v0.
+//   - Regex over the raw command string; shell quoting is NOT parsed for
+//     advisory rules. A literal pipe inside a quoted pattern (e.g.
+//     `grep "a|b" file`) can trigger any advisory rule that looks for `|`.
+//     False-positive class accepted for v0 advisory rules (cheap: extra context).
+//   - BLOCK rules suppress matches that land inside a single- or double-quoted
+//     string (see quotes.go). This is a hard-stop rule class, so refusing a
+//     productive `git commit -m "...which..."` is worth a small fix beyond the
+//     pure-regex approach. Approximation: does not model $'...', heredoc bodies
+//     as separate scopes, or backticks.
 //   - Modern-tool nudges (rg over grep, fd over find) deliberately NOT emitted
 //     here — those belong to the SessionStart manifest (`weir inject`).
 package suggest

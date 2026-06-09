@@ -115,14 +115,21 @@ var Rules = []Rule{
 }
 
 // Match returns the subset of Rules whose patterns match cmd, after applying
-// any per-rule Suppress antidote.
+// any per-rule Suppress antidote. Block-action rules additionally suppress
+// matches that land inside a quoted shell string — see isInsideShellQuotes.
+// Without that guard, a `git commit -m "...which..."` heredoc would refuse a
+// productive commit.
 func Match(cmd string) []Rule {
 	out := make([]Rule, 0, 2)
 	for _, r := range Rules {
-		if !r.Pattern.MatchString(cmd) {
+		loc := r.Pattern.FindStringIndex(cmd)
+		if loc == nil {
 			continue
 		}
 		if r.Suppress != nil && r.Suppress.MatchString(cmd) {
+			continue
+		}
+		if r.Action == "block" && isInsideShellQuotes(cmd, loc[0]) {
 			continue
 		}
 		out = append(out, r)
