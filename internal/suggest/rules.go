@@ -32,7 +32,7 @@ var Rules = []Rule{
 	{
 		Name:    "grep-head-trim",
 		Pattern: regexp.MustCompile(`\bgrep\b[^|]*\|\s*head\b`),
-		Fix:     "`grep PATTERN | head -n N` -> `grep -m N PATTERN`. Stops at the source instead of relying on the pipe for early-exit. With rg installed: `rg -m N PATTERN`.",
+		Fix:     "`grep PATTERN FILE | head -n N` -> `grep -m N PATTERN FILE` (or `rg -m N` with rg installed). Stops at the source instead of relying on the pipe for early-exit. Caveat: `-m N` caps PER FILE, `| head -N` caps TOTAL across all files — they diverge on multi-file/recursive searches.",
 	},
 	{
 		Name:    "ls-grep",
