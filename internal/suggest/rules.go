@@ -112,6 +112,19 @@ var Rules = []Rule{
 		Pattern: regexp.MustCompile(`\bps\b[^|\n;&]*\|\s*grep\b`),
 		Fix:     "`ps aux | grep PATTERN` -> `pgrep -af PATTERN` (or `pgrep -f PATTERN` to omit the cmdline). Atomic, sees full cmdline by default, handles empty matches cleanly, no `grep -v grep` self-match dance. For killing: `pkill -f PATTERN`.",
 	},
+	// --- git staging guard -------------------------------------------------
+	{
+		// `git add -A` / `--all` / `.` / `./` stage every UNTRACKED file too — the
+		// classic way stray build artifacts, debug dumps, or secrets sneak into a
+		// commit. Block the broad forms; explicit `git add <path>` and `git add -u`
+		// (restage tracked-only) are fine. The leading `\s` before the token avoids
+		// matching the dot in `foo.py` or `--all` inside a path; `\./?` matches a
+		// lone `.`/`./` but not `./foo` (an explicit path).
+		Name:    "git-add-all",
+		Pattern: regexp.MustCompile(`\bgit\s+add\b[^|\n;&]*?\s(?:-A|--all|\./?)(?:\s|$)`),
+		Fix:     "`git add -A` / `--all` / `.` stage EVERY untracked file too — stray build artifacts, debug dumps, or secrets slip into the commit. Stage explicit paths instead: `git add path/to/file ...`, or `git add -u` to restage only already-tracked changes. Rewrite with the specific paths and retry.",
+		Action:  "block",
+	},
 }
 
 // Match returns the subset of Rules whose patterns match cmd, after applying

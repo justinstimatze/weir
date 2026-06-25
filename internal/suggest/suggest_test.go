@@ -36,6 +36,13 @@ var positives = []struct {
 	{"ps aux | grep transcribe", "ps-grep-vs-pgrep"},
 	{"ps -ef | grep python", "ps-grep-vs-pgrep"},
 	{"ps aux | grep -E 'foo|bar' | grep -v grep", "ps-grep-vs-pgrep"},
+	// git staging guard — broad forms that sweep in untracked files.
+	{"git add -A", "git-add-all"},
+	{"git add --all", "git-add-all"},
+	{"git add .", "git-add-all"},
+	{"git add ./", "git-add-all"},
+	{"git add -A && git commit -m x", "git-add-all"},
+	{"git add -v .", "git-add-all"},
 }
 
 // Negative cases: each MUST match NO rules.
@@ -52,6 +59,13 @@ var negatives = []string{
 	"cat /etc/hosts > /tmp/copy",
 	"echo hello",
 	"git log --oneline | head -20",
+	// git staging guard negatives — explicit paths and tracked-only must NOT block.
+	"git add server.py",
+	"git add foo.py bar.py",
+	"git add src/ docs/",
+	"git add ./foo",
+	"git add -u",
+	"git add -p",
 	"command -v python3",
 	"bmg describe -intent 'assess which mode the lens used'",
 	`echo 'which is best' > /tmp/x`,
