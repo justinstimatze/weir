@@ -75,7 +75,7 @@ func TestQuoteAwareBlockSuppressionUUOC(t *testing.T) {
 	}
 }
 
-func TestIsInsideShellQuotes(t *testing.T) {
+func TestIsInsideShellString_Quotes(t *testing.T) {
 	cases := []struct {
 		label string
 		cmd   string
@@ -91,9 +91,57 @@ func TestIsInsideShellQuotes(t *testing.T) {
 		{"double inside single doesn't toggle", `echo 'say "hi"'`, 10, true},
 	}
 	for _, c := range cases {
-		got := isInsideShellQuotes(c.cmd, c.pos)
+		got := isInsideShellString(c.cmd, c.pos)
 		if got != c.want {
 			t.Errorf("%s (pos %d in %q): got %v, want %v", c.label, c.pos, c.cmd, got, c.want)
 		}
+	}
+}
+
+// TestIsInsideShellString_Heredocs — v0.1.4 addition. Bodies opened by
+// `<<[-]?['"]?DELIM['"]?` and closed by a line equal to DELIM (dedented
+// if `<<-`) suppress block-mode matches that land inside. Motivating case:
+// aipotluckorg-3288452's `git commit -F -` heredoc whose commit-message
+// prose contained the English word "which" three times, tripping
+// which-vs-command-v's block-mode rule on a productive commit.
+func TestIsInsideShellString_Heredocs(t *testing.T) {
+	swap := func(s string) string { return strings.ReplaceAll(s, "WH1CH", "which") }
+	cases := []struct {
+		label  string
+		cmd    string
+		marker string
+		want   bool
+	}{
+		{"plain heredoc body", "cmd <<EOF\nWH1CH is best\nEOF", "WH1CH", true},
+		{"quoted delimiter (aipotluck's case)", "git commit -F - <<'EOF'\nfixed the bug WH1CH broke auth\nEOF", "WH1CH", true},
+		{"double-quoted delimiter", "cat <<\"MSG\"\ncat the log\nMSG", "cat the", true},
+		{"dedented heredoc, tab-prefixed body line", "cmd <<-EOF\n\tWH1CH fires\n\tEOF", "WH1CH", true},
+		{"unterminated heredoc runs to EOF", "cmd <<EOF\nWH1CH never terminates", "WH1CH", true},
+		{"position before heredoc opener is outside", "WH1CH python ; cmd <<EOF\nbody\nEOF", "WH1CH", false},
+		{"position after heredoc terminator is outside", "cmd <<EOF\nbody\nEOF\n; WH1CH python", "WH1CH python", false},
+	}
+	for _, c := range cases {
+		cmd := swap(c.cmd)
+		marker := swap(c.marker)
+		pos := strings.Index(cmd, marker)
+		if pos < 0 {
+			t.Fatalf("%s: marker %q not found", c.label, marker)
+		}
+		if got := isInsideShellString(cmd, pos); got != c.want {
+			t.Errorf("%s: got %v, want %v\ncmd: %q\npos: %d", c.label, got, c.want, cmd, pos)
+		}
+	}
+}
+
+// TestHerestringNotAHeredoc — `<<<` (bash herestring) must not open a
+// heredoc scan. Regression guard for the `<<<` skip path in findHeredocs.
+func TestHerestringNotAHeredoc(t *testing.T) {
+	// Two `which`es: one inside the herestring arg (a quoted string, so
+	// suppressed via quotes), one after a newline on the next command
+	// (must NOT be suppressed as if the herestring had opened a heredoc).
+	cmd := strings.ReplaceAll("cmd <<< 'WH1CH_arg'\nWH1CH python", "WH1CH", "which")
+	second := strings.LastIndex(cmd, "which")
+	if isInsideShellString(cmd, second) {
+		t.Errorf("second `which` (after herestring on next line) should NOT be flagged as inside a shell string; cmd=%q", cmd)
 	}
 }

@@ -132,6 +132,22 @@ var gotchas = []gotcha{
 		Line: "rg: `-r` is `--replace`, NOT recursive (rg recurses by default). `rg -rn PATTERN path` parses as `--replace=n` and silently rewrites every match to the literal \"n\" — exit 0, matching filenames and line numbers, no warning. Use `rg -n PATTERN path` (drop the `-r`).",
 	},
 	{
+		Tool: "rg",
+		// Contributed by mars-1868431 via dispatch 2026-07-23 (v0.1.4
+		// call for gotchas): rg respects .gitignore and skips hidden
+		// files by default, so it silently under-matches vs `grep -r`
+		// when the target lives in an ignored path (.env is the classic
+		// tripwire). Reads as "the string isn't here" when it is.
+		Line: "rg: respects .gitignore and skips hidden files BY DEFAULT — silently UNDER-matches vs `grep -r` when the target lives in a gitignored/hidden path (.env is the classic case). Exit 1, no output, reads as \"the string isn't here\" when it is. Use `rg -uu PATTERN` (or `--no-ignore --hidden`) when the target might live in an ignored/hidden file.",
+	},
+	{
+		Tool: "fd",
+		// Same class as the rg-ignore case: `fd` also hides gitignored
+		// and hidden files by default (find does not). Silent under-match
+		// when searching for a file that lives in an ignored path.
+		Line: "fd: hides gitignored and hidden files BY DEFAULT (unlike `find`). Silently under-matches when the target lives in an ignored/hidden path. Use `fd -HI PATTERN` (or `--hidden --no-ignore`) to include them.",
+	},
+	{
 		Tool: "sd",
 		// Sibling hazard to the rg case: `sd modifies files in-place by
 		// default` (per `sd --help`). Sed habit is `sed 's/…/…/' file`

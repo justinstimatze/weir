@@ -2,6 +2,21 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.4 — 2026-07-23
+
+### Fixed
+- Block-mode rules now suppress matches that land inside a heredoc body, in addition to the existing single/double-quoted suppression. Motivating case (reported by aipotluckorg-3288452): `which-vs-command-v` fired on a `git commit -F - <<'EOF' ... EOF` whose commit-message prose contained the English word "which" three times, refusing a productive commit. The v0.1.1 walker only tracked `'` and `"`, so heredoc bodies were a blind spot. Walker now recognizes `<<[-]?['"]?DELIM['"]?` openers and terminator lines (dedent-aware for `<<-`); `<<<` (herestring) correctly does NOT open a body. Documented gaps unchanged: `$'...'`, backticks, nested heredocs, and heredoc openers inside quoted strings.
+
+### Changed
+- `rg-r-misfire` split into two rules:
+  - **`rg-r-misfire-bundled`** (BLOCK, new): the bundled form `-r[nliwcv]` has virtually no legitimate use — a real single-letter replacement is written `-r n` (separated) or `--replace=n`. Bundled `-r[letter]` is nearly always the `grep -rn` muscle-memory trap that silently rewrites stdout. Blocking outright.
+  - **`rg-r-misfire`** (advise, kept): separated `-r X` where X is a single letter, `''`, or `""`. Legitimate but rare, so advisory rather than block. Now also catches `-r ''` and `-r ""` (empty replacement — silently strips matches from output), reported by aipotluckorg-3288452 as a same-class variant.
+
+### Added
+- New gotchas section entries, contributed by mars-1868431 via dispatch:
+  - **rg**: respects `.gitignore` and hides hidden files by default — silently under-matches vs `grep -r` when the target lives in an ignored path. `.env` is the classic tripwire. Use `rg -uu` (or `--no-ignore --hidden`).
+  - **fd**: same class — hides gitignored and hidden files by default (unlike `find`). Use `fd -HI`.
+
 ## v0.1.3 — 2026-07-23
 
 ### Added

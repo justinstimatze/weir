@@ -44,11 +44,15 @@ var positives = []struct {
 	{"git add -A && git commit -m x", "git-add-all"},
 	{"git add -v .", "git-add-all"},
 	// rg -r misfire — silent data corruption from grep -rn muscle memory.
-	{"rg -rn CRON_SECRET /tmp/t.txt", "rg-r-misfire"},
-	{"rg -rn PATTERN .", "rg-r-misfire"},
+	// v0.1.4 split: bundled `-r[nliwcv]` blocks (nearly zero legit use);
+	// separated `-r X` (single-letter, '', or "") advises (legit but rare).
+	{"rg -rn CRON_SECRET /tmp/t.txt", "rg-r-misfire-bundled"},
+	{"rg -rn PATTERN .", "rg-r-misfire-bundled"},
+	{"rg -rl PATTERN /tmp", "rg-r-misfire-bundled"},
+	{"rg -ri PATTERN src/", "rg-r-misfire-bundled"},
 	{"rg -r n /tmp/t.txt", "rg-r-misfire"},
-	{"rg -rl PATTERN /tmp", "rg-r-misfire"},
-	{"rg -ri PATTERN src/", "rg-r-misfire"},
+	{"rg -n 'foo' file -r ''", "rg-r-misfire"},   // aipotluck's variant
+	{`rg -n 'foo' file -r ""`, "rg-r-misfire"},   // same trap, double-quoted
 }
 
 // Negative cases: each MUST match NO rules.
@@ -100,6 +104,11 @@ var negatives = []string{
 	`rg -r foo file`,               // legit multi-char replacement, unquoted
 	`rg -r 'n' file`,               // legit single-letter replacement, quoted (advisory can't inspect quotes; pattern excludes because next char after -r space is ')
 	`rg -e PATTERN -r replacement`, // legit long replacement
+	// v0.1.4 heredoc suppression — block-mode rules must NOT fire on
+	// prose sitting inside a heredoc body passed via `git commit -F -`.
+	"git commit -F - <<'EOF'\nfixed the bug which affected auth\nwhich the fixture asserted\nEOF",
+	"git commit -F - <<EOF\ncat the config file to see the value\nEOF",
+	"git commit -F - <<-EOF\n\twhich fires the retry\nEOF", // dedented form
 }
 
 func names(rs []Rule) []string {
