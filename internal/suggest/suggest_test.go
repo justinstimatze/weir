@@ -43,6 +43,12 @@ var positives = []struct {
 	{"git add ./", "git-add-all"},
 	{"git add -A && git commit -m x", "git-add-all"},
 	{"git add -v .", "git-add-all"},
+	// rg -r misfire — silent data corruption from grep -rn muscle memory.
+	{"rg -rn CRON_SECRET /tmp/t.txt", "rg-r-misfire"},
+	{"rg -rn PATTERN .", "rg-r-misfire"},
+	{"rg -r n /tmp/t.txt", "rg-r-misfire"},
+	{"rg -rl PATTERN /tmp", "rg-r-misfire"},
+	{"rg -ri PATTERN src/", "rg-r-misfire"},
 }
 
 // Negative cases: each MUST match NO rules.
@@ -85,6 +91,15 @@ var negatives = []string{
 	`mlr --c2p cat /tmp/sales.csv | less -S`,
 	`mlr --c2p cat /tmp/sales.csv | bat`,
 	`awk cat /tmp/x.txt`, // hypothetical, but exercises the boundary
+	// rg -r misfire negatives — the trap only fires on bare single-letter
+	// replacements that match a common rg short flag; ordinary rg usage
+	// and legitimate replacements must NOT match.
+	`rg -n PATTERN file`,           // no -r
+	`rg PATTERN file`,              // no flags at all
+	`rg -r 'foo bar' file`,         // legit multi-char replacement, quoted
+	`rg -r foo file`,               // legit multi-char replacement, unquoted
+	`rg -r 'n' file`,               // legit single-letter replacement, quoted (advisory can't inspect quotes; pattern excludes because next char after -r space is ')
+	`rg -e PATTERN -r replacement`, // legit long replacement
 }
 
 func names(rs []Rule) []string {

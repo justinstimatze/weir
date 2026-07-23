@@ -102,6 +102,65 @@ func Render(m probe.Manifest, c *idioms.Corpus) string {
 		}
 	}
 
+	// --- silent-failure gotchas (present-tool filtered) ---
+	if gotchas := renderGotchas(m.Present); gotchas != "" {
+		b.WriteString("\n\n[weir] Silent-failure gotchas (classic-tool habits that fail QUIET in the replacement — success with corrupted output, not a loud error):\n")
+		b.WriteString(gotchas)
+	}
+
+	return b.String()
+}
+
+// gotcha names a preferred tool whose failure mode from a specific
+// classic-tool habit is SILENT (exit 0, wrong data) rather than loud
+// (unknown flag, no output). Only surfaces if the tool is installed.
+//
+// Bar to add here is high: the habit must be common AND the failure
+// mode must be silent-with-corruption, not a mere loud error. Loud
+// errors surface themselves; silent-success-with-wrong-data does not.
+type gotcha struct {
+	Tool string
+	Line string
+}
+
+var gotchas = []gotcha{
+	{
+		Tool: "rg",
+		// Reported via dispatch 2026-07-23: someone lost an hour after
+		// `rg -rn PATTERN path` (grep -rn muscle memory) rewrote every
+		// match to the literal "n", quietly, on a live auth path.
+		Line: "rg: `-r` is `--replace`, NOT recursive (rg recurses by default). `rg -rn PATTERN path` parses as `--replace=n` and silently rewrites every match to the literal \"n\" — exit 0, matching filenames and line numbers, no warning. Use `rg -n PATTERN path` (drop the `-r`).",
+	},
+	{
+		Tool: "sd",
+		// Sibling hazard to the rg case: `sd modifies files in-place by
+		// default` (per `sd --help`). Sed habit is `sed 's/…/…/' file`
+		// prints to stdout; `sed -i` writes in-place. In sd there is no
+		// `-i` — the file arg IS the write target. So `sd 'foo' 'bar'
+		// file.txt` you typed expecting a preview has already overwritten
+		// file.txt. Different shape from rg -r (no flag reassignment,
+		// just a different default), same class (silent success + wrong
+		// file on disk).
+		Line: "sd: modifies files IN PLACE by default (no `-i` needed, unlike sed). `sd 'foo' 'bar' file.txt` overwrites file.txt immediately. For a preview use `sd -p 'foo' 'bar' file.txt`; for stdout use `cat file.txt | sd 'foo' 'bar'`.",
+	},
+}
+
+func renderGotchas(present []probe.Entry) string {
+	have := make(map[string]bool, len(present))
+	for _, e := range present {
+		have[e.Name] = true
+	}
+	var b strings.Builder
+	for _, g := range gotchas {
+		if !have[g.Tool] {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString("- ")
+		b.WriteString(g.Line)
+	}
 	return b.String()
 }
 

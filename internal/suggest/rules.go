@@ -125,6 +125,28 @@ var Rules = []Rule{
 		Fix:     "`git add -A` / `--all` / `.` stage EVERY untracked file too — stray build artifacts, debug dumps, or secrets slip into the commit. Stage explicit paths instead: `git add path/to/file ...`, or `git add -u` to restage only already-tracked changes. Rewrite with the specific paths and retry.",
 		Action:  "block",
 	},
+	// --- silent-corruption trap: rg's -r is --replace, not recursive -------
+	{
+		// In rg, `-r` is `--replace`, NOT recursive (rg recurses by default).
+		// `rg -rn PATTERN path` — the natural `grep -rn` muscle-memory reach
+		// — parses as `--replace=n` and rewrites every match to the literal
+		// "n" with exit 0, matching filenames, and matching line numbers. No
+		// warning of any kind. Reported via dispatch 2026-07-23 after an
+		// hour lost misreading `env.CRON_SECRET` as `env.n` on a live auth
+		// path (and initially blaming the harness, not rg).
+		//
+		// Advisory (not block): a legit single-letter replacement like
+		// `rg -r n file` is rare but real; false-blocking it is worse than
+		// surfacing a warning. Pattern targets the specific misfire shape:
+		// `-r` followed (bundled or space-separated) by one of the common
+		// rg short flags (n, l, i, w, c, v) as a bare word. Quoted
+		// replacements like `rg -r 'n' file` do NOT match (the char after
+		// `-r ` is `'`, not a bare letter), so quote-aware suppression
+		// isn't needed even though this rule is advisory.
+		Name:    "rg-r-misfire",
+		Pattern: regexp.MustCompile(`\brg\b[^|\n;&]*\s-r(?:[nliwcv]\b|\s+[nliwcv]\b)`),
+		Fix:     "`rg -r X` sets `--replace=X`, NOT recursion — rg recurses by default. `rg -rn PATTERN path` (grep -rn muscle memory) parses as `--replace=n` and silently rewrites every match to the literal \"n\" with exit 0. Drop the `-r`: use `rg -n PATTERN path`.",
+	},
 }
 
 // Match returns the subset of Rules whose patterns match cmd, after applying
