@@ -49,8 +49,13 @@ var Rules = []Rule{
 		// mlr's verb, not coreutils) doesn't false-fire. The eval surfaced this
 		// bug: with uuoc in block-mode, the model would be refused from a
 		// CORRECT use of mlr that weir's own manifest was suggesting.
+		//
+		// `sd` deliberately NOT in the alternation: `cat FILE | sd PAT REP`
+		// is the SAFE stdin form (writes stdout), and the uuoc rewrite
+		// `sd PAT REP FILE` is the destructive in-place form the
+		// sd-in-place-write rules now block. Two rules would fight.
 		Name:    "uuoc",
-		Pattern: regexp.MustCompile(`(?:^|[;&\n]\s*|&&\s*|\|\|\s*|\|\s*)cat\s+[^-\s]\S*\s*\|\s*(grep|head|tail|sed|awk|jq|less|more|wc|sort|uniq|sd|mlr|bat|rg|fd|fzf)\b`),
+		Pattern: regexp.MustCompile(`(?:^|[;&\n]\s*|&&\s*|\|\|\s*|\|\s*)cat\s+[^-\s]\S*\s*\|\s*(grep|head|tail|sed|awk|jq|less|more|wc|sort|uniq|mlr|bat|rg|fd|fzf)\b`),
 		Fix:     "Useless use of cat — `cat FILE | TOOL` -> `TOOL FILE` (or `TOOL ARGS FILE`). grep/head/tail/sed/awk/jq/wc/sort/uniq/less/more all accept a file argument directly. Rewrite the command and retry.",
 		Action:  "block",
 	},
@@ -157,6 +162,57 @@ var Rules = []Rule{
 		Name:    "rg-r-misfire",
 		Pattern: regexp.MustCompile(`\brg\b[^|\n;&]*\s-r\s+(?:[nliwcv]\b|''|"")`),
 		Fix:     "`rg -r X` sets `--replace=X`, not recursion — rg recurses by default. `-r n` (or `-r ''` / `-r \"\"`) is a legitimate single-letter or empty-string replacement, but it's rare — the same shape shows up when someone reaches for grep-like recursion or trails a `-r` at the end of a command. Verify you meant to rewrite matches; if you're searching, drop the `-r` and use `rg -n PATTERN path`.",
+	},
+	// --- silent-corruption trap: sd writes IN PLACE by default ------------
+	// Same class as rg-r-misfire, different mechanism: the sed muscle-memory
+	// invocation `sed 'PAT' file` prints to stdout, and sed needs `-i` to
+	// write in place. sd inverts that default: `sd PAT REP FILE` overwrites
+	// FILE. There is no `-i` in sd — the file operand IS the write target.
+	//
+	// First reported via dispatch 2026-07-25 by cope-1184525 after
+	// `sd '=.*' '=<set>' .env` overwrote a live ANTHROPIC_API_KEY with the
+	// literal string "<set>" (file went 232 -> 129 bytes), recovered only
+	// because they kept a separate key .txt out-of-band. Cope's diagnosis:
+	// the v0.1.3 sd gotcha entry in inject.go carried the correct warning,
+	// but was ambient prose delivered once at SessionStart — the PreToolUse
+	// checker (this file) had no sd rule, so the destructive command sailed
+	// through while `ls-pipe-wc-l` and `grep-head-trim` blocked style nits
+	// on the same session. Severity ordering was inverted.
+	//
+	// Split into a base advisory + two block-mode escalations, matching the
+	// rg-r-misfire shape:
+	//   - Base: `sd PAT REP FILE` with no -p/--preview. Legitimate but
+	//     easy-to-accidentally-persist, so advisory rather than block.
+	//   - Escalation A (BLOCK): FILE matches a secret-ish pattern
+	//     (.env, .pem, credential*, .key, .p12, .pfx). Overwriting these
+	//     is close to unrecoverable in practice.
+	//   - Escalation B (BLOCK): REPLACEMENT is redaction-shaped (<set>,
+	//     <redacted>, ***, REDACTED). A user typing a redaction almost
+	//     never wants it persisted — the replacement's SHAPE reveals the
+	//     "for display, not disk" intent. Zero-FP by construction.
+	//
+	// All three rules suppress on `-p` / `--preview` — the safe form.
+	// Stdin form (`cat FILE | sd PAT REP`) has only 2 positional args and
+	// naturally doesn't match the 3-arg pattern.
+	{
+		Name:     "sd-in-place-write",
+		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)(?:\s|$)`),
+		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Fix:      "sd writes to FILE IN PLACE — unlike sed, no `-i` is needed. `sd PAT REP FILE` overwrites FILE immediately. For a preview use `sd -p PAT REP FILE`; for stdout use `cat FILE | sd PAT REP`.",
+	},
+	{
+		Name:     "sd-in-place-write-secret-file",
+		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+\S*(?:\.env\b|\.pem\b|credential|\.key\b|\.p12\b|\.pfx\b)`),
+		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Fix:      "sd writes IN PLACE + you named a secret-ish file (.env, .pem, credentials, .key, .p12, .pfx). Overwriting the file destroys the real secret with the replacement string. If you meant to mask for DISPLAY, pipe to stdout: `cat FILE | sd PAT REP`. If you meant to persist, verify first with `sd -p PAT REP FILE`. Rewrite and retry.",
+		Action:   "block",
+	},
+	{
+		Name:     "sd-in-place-write-redaction",
+		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*(?:<set>|<redacted>|\*\*\*|REDACTED)[^']*'|"[^"]*(?:<set>|<redacted>|\*\*\*|REDACTED)[^"]*"|\S*(?:<set>|<redacted>|\*\*\*|REDACTED)\S*)\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)`),
+		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Fix:      "sd writes IN PLACE + the replacement looks like a redaction pattern (<set>, <redacted>, ***, REDACTED). Users typing redactions almost never want them persisted to disk — the shape says \"for display\". Pipe to stdout instead: `cat FILE | sd PAT REP` (safe, no write). Rewrite and retry.",
+		Action:   "block",
 	},
 }
 

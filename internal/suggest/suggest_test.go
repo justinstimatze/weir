@@ -53,6 +53,23 @@ var positives = []struct {
 	{"rg -r n /tmp/t.txt", "rg-r-misfire"},
 	{"rg -n 'foo' file -r ''", "rg-r-misfire"},   // aipotluck's variant
 	{`rg -n 'foo' file -r ""`, "rg-r-misfire"},   // same trap, double-quoted
+	// sd in-place trap — v0.1.5, reported by cope-1184525 after
+	// `sd '=.*' '=<set>' .env` destroyed a live ANTHROPIC_API_KEY.
+	// Base advisory: any 3-arg sd on a file, no -p/--preview.
+	{"sd 'foo' 'bar' file.txt", "sd-in-place-write"},
+	{"sd '=.*' '=whatever' /tmp/x.conf", "sd-in-place-write"},
+	{`sd "foo" "bar" myfile`, "sd-in-place-write"},
+	{"sd 'x' 'y' path/to/file", "sd-in-place-write"},
+	// Secret-file escalation: block on .env / .pem / .key / credentials.
+	{"sd '=.*' '=<set>' .env", "sd-in-place-write-secret-file"}, // cope's exact command
+	{"sd 'foo' 'bar' /etc/ssl/server.pem", "sd-in-place-write-secret-file"},
+	{"sd 'x' 'y' ~/.ssh/id_rsa.key", "sd-in-place-write-secret-file"},
+	{"sd 'x' 'y' /path/to/credentials.json", "sd-in-place-write-secret-file"},
+	{"sd 'x' 'y' cert.p12", "sd-in-place-write-secret-file"},
+	// Redaction-shaped replacement: block regardless of file name.
+	{"sd 'apikey=.*' 'apikey=<redacted>' cfg.yaml", "sd-in-place-write-redaction"},
+	{"sd 'pw=.*' 'pw=***' notes.md", "sd-in-place-write-redaction"},
+	{"sd 'secret=.*' 'secret=REDACTED' log.txt", "sd-in-place-write-redaction"},
 }
 
 // Negative cases: each MUST match NO rules.
@@ -109,6 +126,13 @@ var negatives = []string{
 	"git commit -F - <<'EOF'\nfixed the bug which affected auth\nwhich the fixture asserted\nEOF",
 	"git commit -F - <<EOF\ncat the config file to see the value\nEOF",
 	"git commit -F - <<-EOF\n\twhich fires the retry\nEOF", // dedented form
+	// sd in-place negatives — safe shapes must NOT fire any of the three rules.
+	`sd -p '=.*' '=<set>' .env`,           // preview — the safe form for cope's case
+	`sd --preview 'foo' 'bar' file.txt`,   // long-form preview
+	`cat file.txt | sd 'foo' 'bar'`,       // stdin form, writes stdout
+	`echo hi | sd 'x' 'y'`,                // stdin form, 2 args only
+	`sd 'foo' 'bar'`,                      // 2 args, reads stdin
+	`sd --help`,                           // help flag
 }
 
 func names(rs []Rule) []string {

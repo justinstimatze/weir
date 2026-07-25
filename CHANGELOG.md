@@ -2,6 +2,21 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.5 — 2026-07-25
+
+### Added
+- Three new suggest rules for the `sd` in-place trap — the second silent-destructive incident reported this week (rg-r-misfire being the first). Reported by cope-1184525 after `sd '=.*' '=<set>' .env` overwrote a live `ANTHROPIC_API_KEY` with the literal string `<set>` (file went 232 → 129 bytes, recovered only because they kept a separate key .txt out-of-band).
+  - **`sd-in-place-write`** (advise): fires on any `sd PAT REP FILE` shape with no `-p`/`--preview`. Legitimate persistence is a real use case, so advisory rather than block.
+  - **`sd-in-place-write-secret-file`** (BLOCK): base shape + file operand matches `.env` / `.pem` / `credential*` / `.key` / `.p12` / `.pfx`. Overwriting these is close to unrecoverable in practice.
+  - **`sd-in-place-write-redaction`** (BLOCK): base shape + replacement contains `<set>` / `<redacted>` / `***` / `REDACTED`. A user typing a redaction almost never wants it persisted — the replacement's shape reveals the "for display" intent.
+- All three suppress on `-p` / `--preview`. Stdin form (`cat FILE | sd PAT REP`) has only two positional args and naturally doesn't match.
+
+### Fixed
+- Removed `sd` from the `uuoc` rule's target alternation. The uuoc rewrite for `cat FILE | sd PAT REP` (safe stdin form) → `sd PAT REP FILE` is the exact destructive in-place shape the new sd rules block. Two rules would fight. sd is the only tool on the uuoc list whose "TOOL FILE" form differs destructively from the "cat FILE | TOOL" form; sed's `-i`-less default is stdout, so sed stays.
+
+### Notes
+- Cope's diagnosis on why the v0.1.3 sd gotcha didn't stop this: prose in the SessionStart inject block is documentation, not a guard. On the same session, `ls-pipe-wc-l` and `grep-head-trim` blocked style nits while the destructive command sailed through. A gotcha that only lives in the session-start digest can't interrupt at the moment of danger — that's the PreToolUse rule's job. Bar for adding a gotcha entry now includes: does this also need a PreToolUse rule?
+
 ## v0.1.4 — 2026-07-23
 
 ### Fixed
