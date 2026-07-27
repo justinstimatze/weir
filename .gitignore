@@ -39,3 +39,12 @@ __pycache__/
 # Personal project journal — stays in working dir, never committed.
 # Was tracked in early commits; will drop out at squash-before-public time.
 /SESSION.md
+
+# Inbound field reports from sibling sessions. These are the raw source for
+# rule changes and they are dense with private paths — the host's real
+# home directory, checkout locations for projects unrelated to weir, and
+# the occasional second account. The repo is public; the reports stay local.
+# What survives into git is the rule, its test fixtures, and the CHANGELOG
+# entry, all written with placeholder paths.
+/FIELD_REPORT_*.md
+/GOTCHA-*.md

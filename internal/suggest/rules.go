@@ -190,6 +190,22 @@ var Rules = []Rule{
 	//     <redacted>, ***, REDACTED). A user typing a redaction almost
 	//     never wants it persisted — the replacement's SHAPE reveals the
 	//     "for display, not disk" intent. Zero-FP by construction.
+	//   - Escalation C (BLOCK): REPLACEMENT is the EMPTY string. Same
+	//     shape-reveals-intent argument as B, one step stronger: `sd PAT ''
+	//     FILE` does not substitute, it DELETES, and persisting a deletion
+	//     is what "strip this out so I can look at the rest" turns into
+	//     when the file operand is present. Added 2026-07-27 after a
+	//     session ran `sd '^---[\s\S]*?---' '' "$f"` in a loop to strip
+	//     frontmatter before a word count and blanked 11 tracked .mdoc
+	//     files instead — every count came back 0, which is the only
+	//     reason anyone noticed. Recovered via `git checkout --`.
+	//
+	//     That session had the base advisory fire and could not use it: for
+	//     a destructive write the hook text arrives with the tool RESULT,
+	//     after the loop has run. It also had the v0.1.3 SessionStart prose
+	//     loaded. Neither is a mitigation — same inverted severity ordering
+	//     cope hit, one tier up. If the replacement is empty and a file
+	//     operand is present, refuse and make them say `-p` or pipe it.
 	//
 	// All three rules suppress on `-p` / `--preview` — the safe form.
 	// Stdin form (`cat FILE | sd PAT REP`) has only 2 positional args and
@@ -212,6 +228,13 @@ var Rules = []Rule{
 		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*(?:<set>|<redacted>|\*\*\*|REDACTED)[^']*'|"[^"]*(?:<set>|<redacted>|\*\*\*|REDACTED)[^"]*"|\S*(?:<set>|<redacted>|\*\*\*|REDACTED)\S*)\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)`),
 		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + the replacement looks like a redaction pattern (<set>, <redacted>, ***, REDACTED). Users typing redactions almost never want them persisted to disk — the shape says \"for display\". Pipe to stdout instead: `cat FILE | sd PAT REP` (safe, no write). Rewrite and retry.",
+		Action:   "block",
+	},
+	{
+		Name:     "sd-in-place-write-empty",
+		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:''|"")\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)(?:\s|$)`),
+		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Fix:      "sd writes IN PLACE + the replacement is EMPTY, so this DELETES the matched text from FILE rather than substituting anything. Stripping a section to read what's left is a display job: pipe it — `cat FILE | sd PAT ''` (safe, no write). To persist a deletion, confirm with `sd -p PAT '' FILE` first, or use an editor. Rewrite and retry.",
 		Action:   "block",
 	},
 }

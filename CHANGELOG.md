@@ -2,6 +2,18 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## Unreleased
+
+### Added
+- **`sd-in-place-write-empty`** (BLOCK): base `sd PAT REP FILE` shape where the replacement is the empty string. `sd PAT '' FILE` does not substitute, it deletes — and persisting a deletion is what "strip this out so I can read the rest" becomes when the file operand is present. Same shape-reveals-intent argument as `sd-in-place-write-redaction`, one step stronger. Suppresses on `-p` / `--preview`; the stdin form is unaffected.
+
+  Reported by aipotluckorg-231245 after `sd '^---[\s\S]*?---' '' "$f"` in a `for` loop over eleven tracked `.mdoc` files — intended to strip frontmatter before a word count, actually blanked all eleven. Every count came back `0`, which is the only reason anyone noticed. Recovered with `git checkout --`; nothing reached a commit.
+
+### Notes
+- v0.1.5's note asked "does this also need a PreToolUse rule?" — the answer this time is that it had one and it was the wrong tier. `sd-in-place-write` fired, correctly, with the right text. For a destructive write the advisory arrives in the same message as the tool result, i.e. after the loop has run to completion. The v0.1.3 SessionStart prose was also loaded in that session. Both were read, neither could act.
+
+  Follow-up worth weighing, not yet done: promoting the base `sd-in-place-write` rule to block may *reduce* false positives rather than add them. `Match` gives block-action rules the `isInsideShellString` guard and advisory rules nothing, so today the base rule matches `sd` inside quoted strings — it fired three times in the reporting session on commands with no `sd` invocation, including `rg -ln 'sd-in-place-write' .`, i.e. on its own name. See `FIELD_REPORT_sd-in-place.md`.
+
 ## v0.1.5 — 2026-07-25
 
 ### Added

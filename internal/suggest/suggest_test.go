@@ -51,8 +51,8 @@ var positives = []struct {
 	{"rg -rl PATTERN /tmp", "rg-r-misfire-bundled"},
 	{"rg -ri PATTERN src/", "rg-r-misfire-bundled"},
 	{"rg -r n /tmp/t.txt", "rg-r-misfire"},
-	{"rg -n 'foo' file -r ''", "rg-r-misfire"},   // aipotluck's variant
-	{`rg -n 'foo' file -r ""`, "rg-r-misfire"},   // same trap, double-quoted
+	{"rg -n 'foo' file -r ''", "rg-r-misfire"}, // aipotluck's variant
+	{`rg -n 'foo' file -r ""`, "rg-r-misfire"}, // same trap, double-quoted
 	// sd in-place trap — v0.1.5, reported by cope-1184525 after
 	// `sd '=.*' '=<set>' .env` destroyed a live ANTHROPIC_API_KEY.
 	// Base advisory: any 3-arg sd on a file, no -p/--preview.
@@ -70,6 +70,11 @@ var positives = []struct {
 	{"sd 'apikey=.*' 'apikey=<redacted>' cfg.yaml", "sd-in-place-write-redaction"},
 	{"sd 'pw=.*' 'pw=***' notes.md", "sd-in-place-write-redaction"},
 	{"sd 'secret=.*' 'secret=REDACTED' log.txt", "sd-in-place-write-redaction"},
+	// Empty replacement: block regardless of file name. `sd PAT '' FILE` deletes.
+	{`sd '^---[\s\S]*?---' '' "$f"`, "sd-in-place-write-empty"}, // the aipotluck command, verbatim
+	{"sd 'foo' '' notes.md", "sd-in-place-write-empty"},
+	{`sd "<think>.*</think>" "" transcript.txt`, "sd-in-place-write-empty"},
+	{"sd '^#.*$' '' src/main.go", "sd-in-place-write-empty"},
 }
 
 // Negative cases: each MUST match NO rules.
@@ -126,13 +131,18 @@ var negatives = []string{
 	"git commit -F - <<'EOF'\nfixed the bug which affected auth\nwhich the fixture asserted\nEOF",
 	"git commit -F - <<EOF\ncat the config file to see the value\nEOF",
 	"git commit -F - <<-EOF\n\twhich fires the retry\nEOF", // dedented form
-	// sd in-place negatives — safe shapes must NOT fire any of the three rules.
-	`sd -p '=.*' '=<set>' .env`,           // preview — the safe form for cope's case
-	`sd --preview 'foo' 'bar' file.txt`,   // long-form preview
-	`cat file.txt | sd 'foo' 'bar'`,       // stdin form, writes stdout
-	`echo hi | sd 'x' 'y'`,                // stdin form, 2 args only
-	`sd 'foo' 'bar'`,                      // 2 args, reads stdin
-	`sd --help`,                           // help flag
+	// sd in-place negatives — safe shapes must NOT fire any of the four rules.
+	`sd -p '=.*' '=<set>' .env`,         // preview — the safe form for cope's case
+	`sd --preview 'foo' 'bar' file.txt`, // long-form preview
+	`cat file.txt | sd 'foo' 'bar'`,     // stdin form, writes stdout
+	`echo hi | sd 'x' 'y'`,              // stdin form, 2 args only
+	`sd 'foo' 'bar'`,                    // 2 args, reads stdin
+	`sd --help`,                         // help flag
+	// Empty-replacement negatives. The escalation must leave the two safe ways
+	// to delete-for-display alone, or it just teaches people to work around it.
+	`cat page.mdoc | sd '^---[\s\S]*?---' ''`, // the fix for the command that caused it
+	`sd -p 'foo' '' notes.md`,                 // preview an in-place deletion
+	`sd 'foo' ''`,                             // 2 args, reads stdin
 }
 
 func names(rs []Rule) []string {
