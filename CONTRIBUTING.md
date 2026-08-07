@@ -49,9 +49,35 @@ CI runs all of the above on every push/PR.
 
 Rules live in [`internal/suggest/rules.go`](internal/suggest/rules.go) as a `[]Rule`. Each rule needs a unique `Name`, a `Pattern` (Go RE2), an optional `Suppress` regex (antidote — if matched, suppresses the rule even if Pattern matched), a one-paragraph `Fix` text, and an `Action` of `"advise"` (default) or `"block"`.
 
-**Block mode is conservative.** Only mark a rule `"block"` if the suggested rewrite is mechanically lossless and unambiguous — Claude Code will refuse to run the command and force a retry, so a false-positive blocks productive work. The current block rules (`uuoc`, `which-vs-command-v`) meet this bar; most don't.
+**Block mode is conservative.** Only mark a rule `"block"` if the suggested rewrite is mechanically lossless and unambiguous — Claude Code will refuse to run the command and force a retry, so a false positive blocks productive work. Two shapes have earned it. One is a safe rewrite (`uuoc`, `which-vs-command-v`, `git-add-all`, `rg-r-misfire-bundled`). The other is a destructive write whose *arguments reveal it was never meant to persist*: the `sd-in-place-write-*` escalations block on a secret-ish file operand, a redaction-shaped replacement, or an empty replacement, because someone typing `<redacted>` or `''` is masking for a screen. Their base rule stays advisory, because persisting a substitution is an ordinary thing to want.
 
-When adding a rule, also add at least one positive case + one tight negative case to [`internal/suggest/suggest_test.go`](internal/suggest/suggest_test.go). Cases like `"bmg describe -intent 'assess which mode the lens used'"` (a false-positive for the naive `which CMD` regex) catch the most important class of bugs.
+Blocking also has a timing argument behind it that advisories cannot answer. For a destructive command the advisory text arrives in the same message as the tool *result* — after the write. A rule that is right and late is not a mitigation.
+
+When adding a rule, also add at least one positive case + one tight negative case to [`internal/suggest/suggest_test.go`](internal/suggest/suggest_test.go). Cases like `"bmg describe -intent 'assess which mode the lens used'"` (a false-positive for the naive `which CMD` regex) catch the most important class of bugs. `TestEveryRuleHasAPositive` fails the build if you skip the positive.
+
+Three tables, and picking the right one matters:
+
+- `positives` — this command MUST fire this rule (it may fire others too).
+- `negatives` — this command must fire NOTHING.
+- `ruleNegatives` — this command must not fire *this* rule, but is free to fire others. Reach for this whenever a fixture is a true positive for one rule and a false positive for its neighbour, which is most of them once a tool has more than one rule. `sd '(x)' 'got:$1' file.txt` really is an in-place write and really is not a bad capture-group reference; putting it in `negatives` asserts something false.
+
+**Measure the fire rate before you ship it.** A rule's pattern is a claim about a corpus, and the claim is usually wrong the first time. Sweep the host's own transcripts:
+
+```sh
+WEIR_SAMPLE=1 WEIR_SAMPLE_N=8 go test ./internal/measure -run TestSampleFires -v -timeout 25m
+```
+
+That prints every rule's fire count as a percentage of all Bash calls, plus up to N distinct matching commands each, so you can read what you actually caught. Set `WEIR_SAMPLE_RULE=<name>` to restrict the samples to one rule. It skips unless `WEIR_SAMPLE` is set, so it costs CI nothing.
+
+Rough bands, from what has held up: **under ~0.5%** is a tripwire and fine; **1–2%** is defensible only if you have read the spans and they are overwhelmingly true positives; **above ~5%** wants narrowing whatever the samples say. A rule that fires constantly teaches the reader to stop reading the advisory tier, which costs more than the rule was ever going to save.
+
+Read the spans before you accept a number in the 1–2% band, and read them before you accept a low one too. `pipe-eats-exit-status` measured 7.4% on its first draft, and the samples showed the dominant match was `make check 2>&1 | tail -15` — a correct, deliberate workflow, not the trap. Narrowed to publish and install verbs it measures ~2%, and the spans there are `git push 2>&1 | tail` and `pip install -e . -q 2>&1 | tail`, which are the trap exactly. Same band, opposite verdict; only the spans separate them.
+
+To see which rule matched where in a single command, and whether its `Suppress` fired:
+
+```sh
+WEIR_SPAN='your command here' go test ./internal/suggest -run TestSpanProbe -v
+```
 
 ## Adding a composition idiom
 

@@ -41,7 +41,7 @@ When tools are missing but apt-installable, weir surfaces a `sudo apt install ..
 
 ### Layer 2 — Antipattern suggester (PreToolUse:Bash)
 
-Before each Bash invocation, weir lints the command against ~12 rules. Two modes:
+Before each Bash invocation, weir lints the command against the rule table in [`internal/suggest/rules.go`](internal/suggest/rules.go). Two modes:
 
 - **Advisory** (default): the suggestion is injected as context; the command still runs. Used for rules whose rewrites have edge cases.
 - **Block**: weir refuses to run the command and shows the suggested rewrite; the model retries with the better form. Used only for *mechanically-safe* rewrites where the rewrite is lossless and unambiguous.

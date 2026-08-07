@@ -23,6 +23,56 @@ type Rule struct {
 	Action   string // "" | "advise" (default) | "block"
 }
 
+// Shell-word fragments, shared by the rules that count positional arguments.
+//
+// shGap is the "flags and other noise" run between a binary name and its
+// first positional argument. It must not cross a statement separator, a
+// pipe, or a redirect.
+//
+// shWord is one positional argument: a quoted string, or a bare token
+// containing NO shell metacharacter. The metacharacter exclusion is the
+// whole point. The obvious spelling `[^\s'"]\S*` happily consumes `|`,
+// `>` or `<` as if it were an argument, which lets an N-positional-arg
+// pattern step across a pipe boundary and match a command that has
+// nothing of the sort in it. That bug made a tag-stripping curl pipeline
+// with an empty replacement, piped onward to head — the safe stdout form
+// the sd rules recommend as the remedy — fire sd-in-place-write, by
+// taking the second `|` as the file operand. Reported from
+// two independent sessions (2026-07-28 twip, 2026-08-06 a sibling);
+// the second one counted nine false positives in ten advisory fires and
+// named this shape as five of them.
+//
+// shFile is the file-operand position: same idea, but it must start with
+// a path-ish character so a flag or redirect can never land there.
+//
+// cmdPos anchors a binary name to a command position — statement start,
+// or just after a newline, `;`, `&&`, `||`, or a pipe. RE2 has no
+// look-behind, so the separator is consumed as part of the match. Short
+// binary names need this: `\bsd\b` alone matches inside the identifier
+// `sd-in-place-write`, so grepping the rule table for its own rule name
+// fired the rule. Reported 2026-07-28 from twip, and reproduced here on
+// the very command that went looking for it.
+//
+// redirGap is shGap's sibling for rules that must reach across a
+// redirection to find a pipe. The usual `[^|\n;&]*` stops dead at the `&`
+// in `2>&1`, which is present on almost every command whose output someone
+// bothered to trim — so a gap that excludes `&` outright never sees the
+// pipe in `git push origin main 2>&1 | tail -5`. This admits `&` only in
+// the redirect forms (`2>&1`, `&>file`) and still stops at `&&`.
+//
+// Bounded, unlike the other gaps, because it is the only one that spans a
+// whole command's argument list rather than a flag run. Unbounded it
+// reached from a `git push` to a pipe 800 characters downstream in the
+// same statement, which is not a pipeline the push is part of. 120 is
+// past any real argument list and short of a paragraph.
+const (
+	shGap    = `[^|\n;&<>]*`
+	shWord   = `(?:'[^']*'|"[^"]*"|[^\s'"|;&<>()][^\s|;&<>()]*)`
+	shFile   = `(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)`
+	cmdPos   = `(?:^|[;&\n]\s*|&&\s*|\|\|\s*|\|\s*)`
+	redirGap = `(?:[^|\n;&]|&\d|&>){0,120}`
+)
+
 // Rules is the live antipattern set. Edits here are the rule table.
 //
 // Inter-statement-separator-safe gaps use [^|\n;&], NOT [^|] — without that,
@@ -115,7 +165,12 @@ var Rules = []Rule{
 		// ~250 hits across variants in the user's corpus after the pass-B per-statement fix.
 		Name:    "ps-grep-vs-pgrep",
 		Pattern: regexp.MustCompile(`\bps\b[^|\n;&]*\|\s*grep\b`),
-		Fix:     "`ps aux | grep PATTERN` -> `pgrep -af PATTERN` (or `pgrep -f PATTERN` to omit the cmdline). Atomic, sees full cmdline by default, handles empty matches cleanly, no `grep -v grep` self-match dance. For killing: `pkill -f PATTERN`.",
+		// The "for killing, use pkill -f" clause this Fix used to carry was
+		// itself the trap that pkill-f-self-match now flags — see the
+		// self-match comment below. Recommending the safe form is the job;
+		// recommending it in the tool's own remedy text is how the previous
+		// uuoc/sd collision happened.
+		Fix: "`ps aux | grep PATTERN` -> `pgrep -af PATTERN` for a one-shot look. Atomic, sees the full cmdline, handles empty matches cleanly, no `grep -v grep` self-match dance. To WAIT on or KILL something, don't reach for a pattern at all — capture the PID when you start the job (`cmd & PID=$!`) and use `kill -0 $PID` / `kill $PID`. Under Claude Code every Bash call runs as `bash -c '<the whole command>'`, so `pgrep -f`/`pkill -f` match the shell issuing them.",
 	},
 	// --- git staging guard -------------------------------------------------
 	{
@@ -207,37 +262,345 @@ var Rules = []Rule{
 	//     cope hit, one tier up. If the replacement is empty and a file
 	//     operand is present, refuse and make them say `-p` or pipe it.
 	//
-	// All three rules suppress on `-p` / `--preview` — the safe form.
+	// All four rules suppress on `-p` / `--preview` — the safe form.
 	// Stdin form (`cat FILE | sd PAT REP`) has only 2 positional args and
-	// naturally doesn't match the 3-arg pattern.
+	// doesn't match the 3-arg pattern.
+	//
+	// v0.1.6 rewrote all four onto the cmdPos/shGap/shWord/shFile
+	// fragments after the field reported the base rule as the single
+	// largest source of advisory noise. Two distinct bugs, both fixed
+	// there rather than here: `\bsd\b` matched inside identifiers like
+	// `sd-in-place-write`, and the old bare-token class `[^\s'"]\S*`
+	// consumed `|` and `>` as positional arguments.
 	{
 		Name:     "sd-in-place-write",
-		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)(?:\s|$)`),
-		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+` + shWord + `\s+` + shFile + `(?:\s|$)`),
+		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes to FILE IN PLACE — unlike sed, no `-i` is needed. `sd PAT REP FILE` overwrites FILE immediately. For a preview use `sd -p PAT REP FILE`; for stdout use `cat FILE | sd PAT REP`.",
 	},
 	{
 		Name:     "sd-in-place-write-secret-file",
-		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+\S*(?:\.env\b|\.pem\b|credential|\.key\b|\.p12\b|\.pfx\b)`),
-		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+` + shWord + `\s+` + `[^\s|;&<>()]*(?:\.env\b|\.pem\b|credential|\.key\b|\.p12\b|\.pfx\b)`),
+		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + you named a secret-ish file (.env, .pem, credentials, .key, .p12, .pfx). Overwriting the file destroys the real secret with the replacement string. If you meant to mask for DISPLAY, pipe to stdout: `cat FILE | sd PAT REP`. If you meant to persist, verify first with `sd -p PAT REP FILE`. Rewrite and retry.",
 		Action:   "block",
 	},
 	{
 		Name:     "sd-in-place-write-redaction",
-		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:'[^']*(?:<set>|<redacted>|\*\*\*|REDACTED)[^']*'|"[^"]*(?:<set>|<redacted>|\*\*\*|REDACTED)[^"]*"|\S*(?:<set>|<redacted>|\*\*\*|REDACTED)\S*)\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)`),
-		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+` + `(?:'[^']*` + redactionAlt + `[^']*'|"[^"]*` + redactionAlt + `[^"]*"|[^\s'"|;&<>()]*` + redactionAlt + `[^\s|;&<>()]*)` + `\s+` + shFile),
+		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + the replacement looks like a redaction pattern (<set>, <redacted>, ***, REDACTED). Users typing redactions almost never want them persisted to disk — the shape says \"for display\". Pipe to stdout instead: `cat FILE | sd PAT REP` (safe, no write). Rewrite and retry.",
 		Action:   "block",
 	},
 	{
 		Name:     "sd-in-place-write-empty",
-		Pattern:  regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:'[^']*'|"[^"]*"|[^\s'"]\S*)\s+(?:''|"")\s+(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)(?:\s|$)`),
-		Suppress: regexp.MustCompile(`\bsd\b[^|\n;&]*\s(?:-p\b|--preview\b)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+(?:''|"")\s+` + shFile + `(?:\s|$)`),
+		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + the replacement is EMPTY, so this DELETES the matched text from FILE rather than substituting anything. Stripping a section to read what's left is a display job: pipe it — `cat FILE | sd PAT ''` (safe, no write). To persist a deletion, confirm with `sd -p PAT '' FILE` first, or use an editor. Rewrite and retry.",
 		Action:   "block",
 	},
+	// --- silent-corruption trap: sd's replacement has its own $ grammar ---
+	// Orthogonal to the four in-place rules above: the write was intended,
+	// the CONTENT is wrong. sd's replacement string reads `$NAME` as a
+	// reference to a named capture group, and an unmatched reference
+	// expands to EMPTY instead of erroring. So
+	// `sd 'BIN=".*"' 'BIN="${TWIP_BIN:-$HERE/target/release/twip}"' f.sh`
+	// writes `BIN=""` and exits 0.
+	//
+	// The sed muscle memory is not merely absent here, it is inverted.
+	// Single-quoting is what makes `sed 's/x/$FOO/'` emit a literal
+	// `$FOO` — the quotes stop the shell and sed has no `$` grammar of
+	// its own. In sd the quotes still stop the shell and then sd
+	// interpolates anyway, so the protective reflex produces the
+	// opposite of its usual result. Reported 2026-07-28 from twip
+	// against sd 1.0.0, with a measured table.
+	//
+	// Fires on the SINGLE-QUOTED replacement only. A double-quoted or
+	// bare `$NAME` is expanded by the shell before sd ever sees it,
+	// which is the documented way to interpolate and must stay silent.
+	// `$$NAME` is sd's escape for a literal `$` and is excluded by the
+	// `(?:[^'$]|\$\$)*` run. `$1` / `${1}` never trip it — a digit is
+	// neither a letter nor `_`. Both positional forms match: the pipe
+	// form corrupts its output exactly as badly as the in-place form,
+	// so this one deliberately does NOT require a file operand.
+	//
+	// Suppressed when a named group (`(?P<name>` or `(?<name>`) appears
+	// anywhere in the command, which is the legitimate use and
+	// demonstrates the author knows the syntax. Anywhere rather than in
+	// the pattern argument specifically: the suppressor runs against the
+	// whole string, and a named group elsewhere in a command that also
+	// contains an sd is not worth a second regex to distinguish.
+	{
+		Name:     "sd-replacement-shell-var",
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'`),
+		Suppress: regexp.MustCompile(`\(\?P?<[A-Za-z_]`),
+		Fix:      "sd's replacement string reads `$NAME` as a CAPTURE-GROUP reference, not a shell variable — and an unmatched reference expands to EMPTY rather than erroring, so the text silently disappears (`sd 'x' 'a$HERE/b'` emits `a/b`, exit 0). This is the opposite of sed, where single quotes make `$NAME` literal. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes and let the shell expand it before sd sees it. Numeric refs (`$1`) and named groups you actually defined are fine.",
+	},
+	// --- self-match trap: a pattern that matches the shell running it -----
+	// Claude Code runs every Bash call as `bash -c '<the whole command>'`,
+	// so that shell's /proc/<pid>/cmdline contains the literal pattern
+	// text. `pgrep -f` matches full command lines, so it matches the shell
+	// asking the question.
+	//
+	// For a one-shot look the self-match costs one extra line of output
+	// and nothing else, which is why this rule is gated on co-occurrence
+	// with a loop or a kill rather than on `-f` alone. In a wait loop it
+	// is fatal and silent: `until ! pgrep -f X; do sleep 10; done` never
+	// exits, and the sleep makes it cheap enough to go unnoticed
+	// indefinitely. Reported 2026-08-05 from lexicon, where two earlier
+	// instances of exactly that loop were found still running with etime
+	// in DAYS — they had outlived the job, the session that started them,
+	// and every session since, on a box that was 11G into 14G of RAM.
+	//
+	// The classic habit it displaces (`ps aux | grep foo | grep -v grep`)
+	// has the self-match in its folklore. pgrep looks like the clean
+	// replacement that made `grep -v grep` unnecessary, and for `pgrep
+	// foo` (match on process NAME) it is. `-f` puts the self-match back
+	// and nothing says so.
+	{
+		Name: "pgrep-f-self-match",
+		Pattern: regexp.MustCompile(
+			`\b(?:until|while)\b[^\n]*\bpgrep\b[^|\n;&]*\s(?:-[a-zA-Z]*f\b|--full\b)` +
+				`|\bpgrep\b[^|\n;&]*\s(?:-[a-zA-Z]*f\b|--full\b)[^\n]*\b(?:until|while|kill)\b`),
+		Fix: "`pgrep -f PATTERN` matches the FULL command line of every process, including the `bash -c` shell running THIS command — the pattern text is in its own cmdline. So `until ! pgrep -f foo; do sleep 10; done` matches itself and never exits, with no error and no output. Wait on a PID instead, which cannot match itself: `cmd & PID=$!` then `until ! kill -0 $PID 2>/dev/null; do sleep 10; done`. If you must use a pattern, match the process NAME (`pgrep foo`, no `-f`).",
+	},
+	{
+		Name:    "pkill-f-self-match",
+		Pattern: regexp.MustCompile(`\bpkill\b[^|\n;&]*\s(?:-[a-zA-Z]*f\b|--full\b)`),
+		Fix:     "`pkill -f PATTERN` matches full command lines, and under Claude Code the `bash -c` shell running this command has the pattern text in its own cmdline — so this kills its own shell, usually before you learn whether it killed the target. Ungated, unlike the pgrep case: there is no safe one-shot form. Capture the PID when you start the job (`cmd & PID=$!`) and `kill $PID`, or match the process NAME with `pkill foo` (no `-f`).",
+	},
+	// --- silent-corruption trap: rg's -h is --help ------------------------
+	// In grep, `-h` is `--no-filename`, and `grep -oh PAT f1 f2` is the
+	// standard "just the matches, no file: prefixes" idiom. In ripgrep,
+	// `-h` is `--help` and `--no-filename` is `-I` (or `-N`).
+	//
+	// So `rg -oh 'https?://[^ ]+' a.md b.md` prints the usage text on
+	// stdout and exits 0; the pattern and the file list are never read.
+	// Piped into `sort -u | head`, which is what an extraction command
+	// does, it yields a tidy sorted list of flag descriptions and the
+	// author's email address, and reads as "the files contained these
+	// strings." Reported 2026-07-29.
+	//
+	// Gated so a deliberate `rg -h` / `rg --help` stays silent: fires only
+	// on an h-bearing bundle of two or more letters, or on `-h` followed
+	// by something that looks like a pattern or a path.
+	{
+		Name:    "rg-h-is-help",
+		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*\s(?:-[a-z]*h[a-z]+\b|-[a-z]+h[a-z]*\b|-h\s+['"a-zA-Z_./~])`),
+		Fix:     "In rg, `-h` is `--help`, NOT `--no-filename` — that is `-I` or `-N`. `rg -oh PAT files` prints the usage text on stdout with exit 0; the pattern and file list are never read, and piped into `sort`/`head` it reads as a clean result set that happens to contain no matches. Use `rg -o -N PAT files` (or `-I`). `-o` alone is enough for a single file.",
+	},
+	// --- silent-scope trap: an ignore file governs search, not just git ---
+	// rg and fd honour .gitignore whether or not a git operation is
+	// anywhere in view, so a deny-by-default ignore file makes an entire
+	// tree return zero matches with exit 1 — indistinguishable from "the
+	// string is not there."
+	//
+	// `--hidden` does NOT fix this, which is the part that costs time:
+	// ripgrep descends into a hidden directory fine when you name it as an
+	// explicit path argument, so the dotted path name misdirects toward
+	// the wrong flag. The decisive flag is `--no-ignore` (`-uu` for both).
+	//
+	// Reported 2026-08-06 by a sibling session after a search for stope hook
+	// markers under ~/.claude/projects returned zero rows and was about to
+	// be written up as "these hooks never fired." With `-uu` the same
+	// search returns 20+ files; one marker alone occurs 159 times.
+	// `~/.claude/.gitignore` is deny-by-default with an allowlist — a good
+	// decision for keeping ~10G of transcripts and a credentials file out
+	// of git, which silently became a control on search scope too.
+	//
+	// Gated on the PATH ARGUMENT, not on the absence of a flag. The same
+	// report measured both gates against 39,827 tool calls on this host:
+	// "rg/fd without --hidden" fires on 11% of all calls at 6.4%
+	// precision (base rate 5.1%, so barely above chance); adding "and the
+	// command names a dot-path" moves precision to 28.5% and cuts fire
+	// volume 34x, to 0.33%. A rule that fires on 11% of tool calls is a
+	// tax; one that fires on 0.33% is a tripwire.
+	{
+		Name:     "rg-ignore-file-hides-target",
+		Pattern:  regexp.MustCompile(cmdPos + `(?:rg|fd|fdfind)\b[^|\n;&]*\s` + dotPath),
+		Suppress: regexp.MustCompile(`--no-ignore\b|--unrestricted\b|\s-[a-zA-Z]*[uI][a-zA-Z]*(?:\s|$)|` + dotFileArg),
+		Fix:      "rg and fd honour `.gitignore` even when no git command is involved, so a deny-by-default ignore file makes a whole tree return zero matches with exit 1 — indistinguishable from \"the string is not there.\" `--hidden` does NOT fix this; the flag is `--no-ignore` (`-uu` for rg, `-HI` for fd, which covers both halves). `~/.claude` is deny-by-default on this host, so any search under it needs `-uu`. Confirm what is being skipped with `rg --debug ... 2>&1 | rg ignoring`.",
+	},
+	// --- silent-status trap: a pipeline reports its LAST stage's status ---
+	// `git push origin main 2>&1 | tail -5` exits 0 when the push was
+	// rejected, because `tail` succeeded at tailing a failure. The error
+	// text is right there on stdout, so it does not feel hidden — it gets
+	// hidden one layer up, by anything that reports the STATUS rather than
+	// showing the text: a background-task runner, a `set -e` script, a CI
+	// step, `&&` chaining, an agent harness summarising "exit code 0".
+	//
+	// `2>&1` makes it worse rather than better. Without it, stderr reaches
+	// the terminal unmixed; with it, the error becomes more lines for
+	// `tail -5` to discard.
+	//
+	// A filter as the last stage inverts the sense instead of flattening
+	// it: `go test ./... | rg -v '^ok '` exits 1 when it filtered
+	// everything away, so a fully-green suite reports failure.
+	//
+	// Reported 2026-08-06, three sightings in two sessions. The first was
+	// a background `git push` that reported exit 0 on a rejected push and
+	// was caught minutes later by comparing `git rev-parse HEAD` against
+	// `origin/develop`.
+	{
+		Name:     "pipe-eats-exit-status",
+		Pattern:  regexp.MustCompile(stateChanging + redirGap + `\|\s*(?:tail|head|grep|rg)\b`),
+		Suppress: regexp.MustCompile(`pipefail|PIPESTATUS`),
+		Fix:      "A pipeline exits with its LAST stage's status, so `CMD | tail`/`| head` reports the trimmer's success and a failed CMD reads as exit 0 — a rejected `git push` or a `go install` that printed \"does not contain package\" both report success to a background runner, a `set -e` script, or a CI step. `2>&1` does not help; it just gives `tail` more lines to discard. Use `set -o pipefail`, or redirect and read the status directly: `CMD > out.log 2>&1; echo \"exit: $?\"`. When the command's job is to produce or replace an artifact, check the artifact — a `stat` timestamp or a `--version` is a measurement, a status is a claim.",
+	},
+	{
+		Name:     "pipe-status-echo",
+		Pattern:  regexp.MustCompile(`\|\s*(?:tail|head|grep|rg|sed|awk|jq|wc|sort|uniq|tee)\b[^\n;&]*(?:\n|;)\s*echo\b[^\n]*\$\?`),
+		Suppress: regexp.MustCompile(`pipefail|PIPESTATUS`),
+		Fix:      "`$?` after a pipeline is the LAST stage's status, not the command you care about — `go test ./... | rg -v '^ok '` then `echo $?` prints rg's status, and rg exits 1 when it filtered everything away, so a green suite reports failure. Check `${PIPESTATUS[0]}` INSTEAD, and immediately: it is clobbered by the next command, including by the `echo` that reads it. `set -o pipefail` makes the pipeline take the first non-zero status if you would rather not index.",
+	},
+	// --- silent-destruction trap: sponge commits an empty stream ----------
+	// `cmd | sponge FILE` truncates FILE to zero whenever cmd fails,
+	// because sponge faithfully writes whatever the pipeline produced and
+	// a failed command produces nothing. Exit 0, no warning, original
+	// gone. Measured here rather than assumed:
+	//
+	//	printf 'alpha\nbeta\ngamma\n' > m.md   # 17 bytes
+	//	false | sponge m.md                    # 0 bytes, exit 0
+	//
+	// sponge's whole reason to exist is that `cmd < FILE > FILE` truncates
+	// before cmd reads, so it is reached for precisely when the target and
+	// the source are the same file — which is also when an empty write is
+	// unrecoverable. `sd` and `awk` fail without emptying their target.
+	//
+	// Reported 2026-08-07 by documents-66700 after
+	// `grep -vxF "$LINE" "$M" | sponge "$M"` destroyed an auto-memory
+	// index. Two causes stacked: grep-dash-pattern below made the left
+	// side fail, and this made the failure destroy the input. Either
+	// alone is survivable.
+	//
+	// No Suppress. Whether the left side can fail is not knowable from the
+	// command text, so this advises on every piped sponge and accepts
+	// that some of them were safe.
+	{
+		Name:    "sponge-eats-failed-pipeline",
+		Pattern: regexp.MustCompile(`\|\s*sponge\b`),
+		Fix:     "`cmd | sponge FILE` writes an EMPTY file if cmd fails — sponge commits whatever the pipeline produced, and a failed command produces nothing. Exit 0, no warning, and the original is gone (verified: `false | sponge m.md` takes a 17-byte file to 0). Guard it: `out=$(cmd) && printf '%s\\n' \"$out\" > FILE`, or write a temp path and `mv` after checking the status. `sd` and `awk` fail without emptying the target.",
+	},
+	// --- silent-failure trap: a pattern that starts with a dash -----------
+	// `grep -vxF \"- [Leave it]\" FILE` parses the pattern as an option
+	// bundle and exits 2 with a usage error and no matches. A markdown
+	// list item, a diff line, a CLI flag being searched for — all start
+	// with `-`. GNU grep does this too; on this host `grep` is ugrep
+	// 7.5.0, whose error text is unfamiliar enough to read as a different
+	// failure:
+	//
+	//	grep -vxF "- [Leave it]" n.md   -> ugrep: invalid option, exit 2
+	//	grep -vxF -- "- [Leave it]" n.md -> alpha, exit 0
+	//
+	// The reported case is loud-ish — exit 2 and a message on stderr —
+	// and it earns a rule anyway for two reasons. The message goes to
+	// stderr while stdout stays empty, and the shapes that swallow stderr
+	// are the same ones that make an empty result look like an answer; in
+	// the incident, the empty result went straight into a sponge.
+	//
+	// The second reason came out of measuring the corpus. Sweeping the
+	// rule turned up `grep -E "->"` and `grep "- id:"` as expected, and
+	// also this, which is worse than the reported case:
+	//
+	//	grep -E '->'        -> rc=2, ugrep: invalid option ->
+	//	grep -E '--- FAIL'  -> rc=2, grep: unrecognized option
+	//	grep -E '-v'        -> rc=1, NO MESSAGE
+	//
+	// A pattern that happens to BE a valid flag does not error at all.
+	// `-v` is consumed as --invert-match, so grep silently searches for
+	// nothing, inverts, and exits 1 — which reads as "no matches" and is
+	// the quietest form of the bug. `-i`, `-c`, `-l`, `-o` and `-w` all
+	// behave the same way.
+	//
+	// Gated on a QUOTED operand starting with `-`, because an unquoted one
+	// is indistinguishable from a flag and quoting is what signals the
+	// author meant it as data. cmdPos keeps `git log --grep "-foo"` out,
+	// where `\bgrep\b` alone would match inside `--grep`. A quoted
+	// leading-dash FILE operand (`grep PAT "-weird-name.jsonl"`) fires too
+	// and should: it fails identically and takes the same `--` fix.
+	{
+		Name:     "grep-dash-pattern",
+		Pattern:  regexp.MustCompile(cmdPos + `grep\b[^|\n;&]*\s(?:'-[^']*'|"-[^"]*")`),
+		Suppress: regexp.MustCompile(`\bgrep\b[^|\n;&]*\s(?:--\s|-e\b|--regexp\b)`),
+		Fix:      "An operand starting with `-` is parsed as an OPTION, not as your pattern or filename. Two outcomes, and the second is the dangerous one: `grep -E '--- FAIL' f` exits 2 with a usage error, while `grep -E '-v' f` exits 1 with NO message at all — `-v` is a valid flag, so grep quietly inverts the match instead of searching for the literal text. Markdown list items, diff lines, arrows, and flag names all start with `-`. Pass `--` first: `grep -- \"$PATTERN\" FILE`, or name it with `-e \"$PATTERN\"`.",
+	},
 }
+
+// redactionAlt is the replacement-shape signal for
+// sd-in-place-write-redaction: a replacement that looks like a mask is a
+// replacement meant for a screen, not for disk.
+const redactionAlt = `(?:<set>|<redacted>|\*\*\*|REDACTED)`
+
+// dotPath matches an argument naming a dot-DIRECTORY in a path —
+// `~/.claude/projects`, `/home/x/.config`, `.git/hooks`. Requires a slash
+// so that a bare `.env` pattern or a `./src` / `../lib` relative path does
+// not trip it. The optional leading quote lets `"$HOME/.claude"` through,
+// which is how a path with a variable in it usually gets written.
+//
+// `!` and `*` are excluded because the first corpus sweep of this rule
+// found its false positives concentrated in one shape: a glob EXCLUSION,
+// `rg -g '!**/.git/**' -g '!**/.venv/**' PATTERN dir`. That names a
+// dot-directory in order to skip it, which is the opposite of walking
+// into an ignore file unawares — and someone writing exclusions by hand
+// is the last person who needs telling that ignore rules exist.
+// The argument must also LOOK LIKE A DIRECTORY, which here means every
+// component after the dot segment is dot-free and the argument ends
+// there. ripgrep applies ignore rules only while descending; an
+// explicitly-named path argument is read regardless of them. Measured on
+// a scratch tree with a deny-by-default `*` gitignore:
+//
+//	rg NEEDLE .env    -> 1        (explicit file: read, ignore rules skipped)
+//	rg NEEDLE sub     -> nothing  (directory: descended, ignore rules apply)
+//
+// So `rg -oN 'phc_…' frontend/.env.production.local` and
+// `rg -n node .github/workflows/ci.yml` are not the trap — a dot in the
+// final component ends the match. Two of the first sweep's six sampled
+// fires were exactly that. `dotFileArg` below catches the remainder, the
+// extensionless dot-files like `.gitignore` that this shape cannot tell
+// from a directory.
+//
+// The same measurement retires `.env` as the canonical example the v0.1.3
+// gotcha text used, which is why the reframed entry names `~/.claude`
+// instead: a tree is the thing that returns a clean zero.
+const dotSeg = `\.[A-Za-z_][A-Za-z0-9_-]*`
+const dirTail = `(?:/[A-Za-z0-9_][A-Za-z0-9_-]*)`
+const dotPath = `['"]?(?:[^\s'"|;&<>*!]*/` + dotSeg + dirTail + `*|` + dotSeg + dirTail + `+)/?['"]?(?:\s|$)`
+
+// dotFileArg catches the dot-files that dotPath cannot distinguish from
+// a directory, because they carry no extension: `frontend/.gitignore`
+// reads exactly like `~/.config` to a regex. Named list rather than a
+// shape, since there is no shape to match.
+//
+// Whole-command, so a command naming both a dot-file and a real dot-tree
+// is suppressed. Rare enough to accept over a second regex.
+const dotFileStart = `(?:^|[\s'"/])`
+const dotFileArg = dotFileStart + `\.(?:gitignore|gitattributes|gitmodules|dockerignore|npmrc|nvmrc|` +
+	`editorconfig|prettierrc|eslintrc|babelrc|bashrc|zshrc|profile|env)[\w.-]*(?:\s|$|['"])` +
+	`|` + dotFileStart + `\.git/(?:hooks/\S+|config|HEAD|COMMIT_EDITMSG|index)\b`
+
+// stateChanging lists commands that PUBLISH or INSTALL — where the status
+// is the only signal the work happened, because the visible evidence of
+// failure is indistinguishable from the evidence of success (a binary that
+// is still there, a remote that still has the old commit).
+//
+// The first draft of this list also carried the build and test verbs:
+// `make`, `go build`, `go test`, `npm run`, `cargo build`. Measured
+// against 210,202 Bash calls it fired 15,571 times — 7.4% of everything,
+// noisier than any rule weir has ever shipped, and dominated by a single
+// deliberate shape: `make check 2>&1 | tail -15`. That is not the trap.
+// Someone trimming a check target is READING the tail; the status being
+// eaten costs them nothing because the output is right there and they are
+// looking at it. The trap needs a reader that consumes the status instead
+// of the text, and the failure has to leave no other trace.
+//
+// Cut to the verbs where both conditions hold, this fires ~0.1%. The
+// build and test half is covered by pipe-status-echo (which gates on the
+// author explicitly asking for `$?`, and so is right regardless of verb)
+// and by the shell-level gotcha entry in internal/inject.
+const stateChanging = `\b(?:git\s+(?:push|pull)` +
+	`|go\s+install|cargo\s+(?:install|publish)|pip\s+install|npm\s+publish` +
+	`|terraform\s+(?:apply|destroy)|kubectl\s+apply|docker\s+push` +
+	`|gh\s+release|rsync|scp)\b`
 
 // Match returns the subset of Rules whose patterns match cmd, after applying
 // any per-rule Suppress antidote. Block-action rules additionally suppress

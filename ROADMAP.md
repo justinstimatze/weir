@@ -56,9 +56,11 @@ context). Two natural extensions:
 
 ## Rule-table extensions
 
-The current 12 rules came from the empirical baseline + the pass-A
-hunt + the pass-B discovery + one promotion (`head-tail-range`).
-Future candidates:
+The founding rules came from the empirical baseline + the pass-A hunt +
+the pass-B discovery + one promotion (`head-tail-range`). Everything
+added since arrived as a field report from a sibling session that lost
+something to the habit, which is a better source than mining and a much
+slower one. Future candidates:
 
 - **`ls -l | awk` for column extraction** → `stat -c '%n %s'` or `find -printf` (avoid ls's column shifting on filenames with spaces).
 - **`curl | jq` without `-s`** → ensure flag matches request shape (POST vs GET, content-type).

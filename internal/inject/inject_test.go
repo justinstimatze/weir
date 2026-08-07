@@ -29,8 +29,9 @@ func TestRenderListsPresent(t *testing.T) {
 		},
 	}
 	got := Render(m, nil)
-	// alphabetical order: bat, jq, rg
-	posB := strings.Index(got, "bat (prefer over cat)")
+	// alphabetical by CANONICAL name: bat, jq, rg. bat renders under its
+	// on-disk name because the Debian package installs it as batcat.
+	posB := strings.Index(got, "batcat (prefer over cat;")
 	posJ := strings.Index(got, "jq (additive)")
 	posR := strings.Index(got, "rg (prefer over grep)")
 	if posB < 0 || posJ < 0 || posR < 0 {
@@ -38,6 +39,29 @@ func TestRenderListsPresent(t *testing.T) {
 	}
 	if !(posB < posJ && posJ < posR) {
 		t.Errorf("expected alphabetical order (bat < jq < rg); positions: bat=%d jq=%d rg=%d", posB, posJ, posR)
+	}
+}
+
+// TestRenderInvocableName — when the on-disk binary name differs from the
+// canonical one, the manifest must lead with the name that actually runs
+// and say so. A session that read `fd (prefer over find) -> /usr/bin/fdfind`
+// as "use fd" ran `fd: command not found` behind a `2>/dev/null` and twice
+// reported files absent from a directory they were at depth 1 of.
+func TestRenderInvocableName(t *testing.T) {
+	m := probe.Manifest{
+		Version: 2,
+		Present: []probe.Entry{
+			{Name: "fd", Replaces: "find", Kind: "file", Path: "/usr/bin/fdfind"},
+			{Name: "rg", Replaces: "grep", Kind: "file", Path: "/usr/bin/rg"},
+		},
+	}
+	got := Render(m, nil)
+	if !strings.Contains(got, "- fdfind (prefer over find; upstream name fd, which is NOT on PATH — type `fdfind`)") {
+		t.Errorf("expected fdfind to lead with the invocable name; got: %q", got)
+	}
+	// A tool whose names agree must not grow a note.
+	if !strings.Contains(got, "- rg (prefer over grep) ->") {
+		t.Errorf("expected rg to render unchanged; got: %q", got)
 	}
 }
 
