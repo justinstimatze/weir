@@ -2,6 +2,21 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.7 — 2026-08-31
+
+A cross-project 7-day token-cost audit (real API usage data from Claude Code transcripts, resend-weighted by how many turns each injected block sits in context before compaction) found weir's `SessionStart` hook was 13.9% of all hook+MCP spend account-wide and 85%+ of all hook cost specifically — bigger than every other maintained hook or MCP server combined except `linear`. The cause wasn't call frequency: `weir suggest` (`PreToolUse:Bash`) only costs anything on the rare turn a matching command appears, measured at 637 bytes per single-rule fire. `weir inject` (`SessionStart`) fires once, unconditionally, every session, and then gets resent at cache-read rates on every subsequent turn until compaction — a block injected once at t=0 and read back 100+ times compounds past what its single firing suggests.
+
+### Changed
+- **The silent-failure gotcha section is now terse, and capped.** Measured before this change: the gotcha section was 4,970 of the injection's 9,679 bytes — over half the entire SessionStart block, and the only section of the three (idioms, compositions, gotchas) with no byte budget. It had grown from 4 entries to 11 across recent field-report sessions with nothing watching its size.
+
+  Ten of the eleven gotchas already have a matching `PreToolUse` rule in `rules.go` that explains the same failure in full at the moment the risky command is actually typed — verified against the rule table by name, not assumed. So `Line` now carries only the mechanism, one concrete failure shape, and the fix; the incident narrative and secondary examples that used to live here stay exactly as detailed as before in the matching rule's `Fix` text, which only gets paid for when it's earned. `command-not-found` (no matching rule — absence of a binary isn't regex-detectable) is the one exception and keeps its original length, since it's the only place that hazard is ever explained.
+
+  A new `Rule string` field on the `gotcha` struct names that matching rule; `TestGotchaRulesExist` fails the build if one drifts. A new `GotchaBudgetChars = 3000` caps the section the same way `IdiomBudgetChars`/`CompositionBudgetChars` already cap theirs.
+
+  Measured after: gotchas section 4,970 → 2,799 bytes (−43.7%), full `weir inject` output 9,679 → 7,469 bytes (**−22.8%**). No gotcha was dropped — all 11 still render at today's content size, well under the new cap.
+
+  This is deliberately not a deletion of the SessionStart copy now that a rule exists for each. The `sd`-in-place gotcha proved once already that prose-only SessionStart warnings aren't sufficient on their own (it sat here alone for two releases and still didn't stop the loss it described, which is why every destructive gotcha now has a matching rule) — removing the priming layer entirely would undo that lesson. This change only stops paying the always-resent tax for detail that a second, cheaper, better-timed surface already delivers.
+
 ## v0.1.6 — 2026-08-07
 
 Five field reports arrived between v0.1.5 and now, and one of them opened by measuring weir against itself: ten advisory fires in about thirty minutes, nine judged false positives, five of them the same shape. That report asked for its own new rule to be held until the noise was fixed, on the grounds that a tier which is mostly wrong teaches the reader to stop reading it — which is how a correct advisory sitting in that session's context at 9am failed to prevent the mistake it described at 4am.

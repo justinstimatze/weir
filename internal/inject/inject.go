@@ -54,6 +54,15 @@ type hookOutput struct {
 const CompositionBudgetChars = 1500
 const CompositionMax = 10
 
+// GotchaBudgetChars caps the bytes spent on the gotcha section, mirroring
+// IdiomBudgetChars/CompositionBudgetChars. Belt-and-suspenders: this table
+// grew from 4 to 11 entries across a handful of sessions with nothing
+// capping it, and the terse-Line convention on the gotcha struct only
+// holds if future entries stay terse. 3000 leaves headroom for several
+// more terse entries plus the one deliberately long exception
+// (command-not-found) before truncation engages.
+const GotchaBudgetChars = 3000
+
 // Render builds the additionalContext string from the probe manifest +
 // the embedded idiom corpus. Doesn't perform I/O — easy to test.
 func Render(m probe.Manifest, c *idioms.Corpus) string {
@@ -223,113 +232,120 @@ func renameRe(name string) *regexp.Regexp {
 // also need a PreToolUse rule? Prose delivered once at SessionStart is
 // documentation. It cannot interrupt at the moment of danger, which is
 // the whole job. Every entry below that describes a DESTRUCTIVE habit
-// now has a matching rule in internal/suggest/rules.go.
+// carries the matching rule's name in Rule; TestGotchaRulesExist keeps
+// that reference honest at build time. Rule: "" is the explicit
+// exception, not an oversight.
+//
+// Third bar, added 2026-08-31 after a token-cost audit found this section
+// was over half of weir's entire SessionStart injection and the single
+// biggest hook-cost line account-wide: Line should be TERSE — mechanism,
+// one concrete failure shape, the fix. No incident narrative, no second
+// example. The full story belongs in the matching Rule's Fix text, which
+// only gets paid for on the turn the risky command is actually typed.
+// SessionStart's job is priming, not the deep dive.
 type gotcha struct {
 	Tool string
 	Line string
+	// Rule names the internal/suggest.Rule that intercepts this habit at
+	// the moment it's typed. Empty is permitted ONLY when the habit is
+	// genuinely not regex-detectable — currently just command-not-found,
+	// where this file's copy is the sole explanation that exists anywhere.
+	Rule string
 }
 
+// Ordering note: if this list ever exceeds GotchaBudgetChars, renderGotchas
+// truncates from the END of this slice. Insert new entries by severity,
+// not by append-to-the-bottom, once that ever matters — it doesn't yet at
+// today's content size.
 var gotchas = []gotcha{
 	{
 		Tool: "rg",
+		Rule: "rg-r-misfire",
 		// Reported via dispatch 2026-07-23: someone lost an hour after
 		// `rg -rn PATTERN path` (grep -rn muscle memory) rewrote every
-		// match to the literal "n", quietly, on a live auth path.
-		Line: "rg: `-r` is `--replace`, NOT recursive (rg recurses by default). `rg -rn PATTERN path` parses as `--replace=n` and silently rewrites every match to the literal \"n\" — exit 0, matching filenames and line numbers, no warning. Use `rg -n PATTERN path` (drop the `-r`).",
+		// match to the literal "n", quietly, on a live auth path. Full
+		// story lives in rg-r-misfire's Fix text now — this is the radar
+		// version.
+		Line: "rg: `-r` is `--replace`, NOT recursive. `rg -rn PATTERN path` silently rewrites every match to \"n\", exit 0. Use `rg -n PATTERN path` (drop the `-r`).",
 	},
 	{
 		Tool: "rg",
+		Rule: "rg-ignore-file-hides-target",
 		// Contributed by mars-1868431 via dispatch 2026-07-23 (v0.1.4
-		// call for gotchas): rg respects .gitignore and skips hidden
-		// files by default, so it silently under-matches vs `grep -r`.
-		//
-		// Reframed 2026-08-06 after the entry was read at the top of a
-		// session and the mistake made anyway seventeen hours later. The
-		// remedy it gave (-uu) was right; the framing was what failed.
-		// Leading with hidden files and citing .env made it read as a
-		// rule about dotfiles, and the natural narrower fix for a dotfile
-		// problem is `--hidden` — which does nothing here, because rg
-		// descends into a hidden directory fine when you name it as an
-		// explicit path argument. The decisive flag is `--no-ignore`.
-		// So: lead with the ignore half, and name the deny-by-default
-		// tree that every agent grepping its own history walks into.
-		Line: "rg: honours .gitignore even when no git command is involved — a deny-by-default ignore file makes an ENTIRE TREE return zero matches with exit 1, indistinguishable from \"the string is not there.\" `--hidden` does NOT fix this. The flag is `--no-ignore`; `-uu` covers both halves. `~/.claude` is deny-by-default (transcripts and a credentials file, correctly kept out of git — which silently made them un-searchable too), so any search under it needs `-uu`. Confirm what got skipped with `rg --debug ... 2>&1 | rg ignoring`.",
+		// call for gotchas); reframed 2026-08-06 to lead with --no-ignore
+		// instead of --hidden after the first framing caused a repeat
+		// miss 17h later. Full story (the ~/.claude case, --debug check)
+		// lives in rg-ignore-file-hides-target's Fix text.
+		Line: "rg (and fd): honours .gitignore even with no git command involved — a deny-by-default ignore file returns zero matches, exit 1, indistinguishable from \"not there.\" `--hidden` does NOT fix this. Use `--no-ignore` (`-uu` covers both halves).",
 	},
 	{
 		Tool: "rg",
+		Rule: "rg-h-is-help",
 		// Reported 2026-07-29 while extracting URLs from markdown files.
-		// In grep, `-h` is --no-filename and `grep -oh PAT f1 f2` is the
-		// standard "just the matches" idiom. In rg, `-h` is --help.
-		Line: "rg: `-h` is `--help`, NOT `--no-filename` (that is `-I` or `-N`). `rg -oh PAT files` prints the usage text on stdout and exits 0 — the pattern and file list are never read. Piped into `sort -u | head`, which is what an extraction command does, you get a tidy sorted list of flag descriptions that reads as a clean result set. Use `rg -o -N PAT files`.",
+		// grep's -h is --no-filename; rg's -h is --help.
+		Line: "rg: `-h` is `--help`, NOT `--no-filename` (that's `-I`/`-N`). `rg -oh PAT files` prints usage text and exits 0 — pattern and files never read. Use `rg -o -N PAT files`.",
 	},
 	{
 		Tool: "fd",
-		// Same class as the rg-ignore case: `fd` also hides gitignored
-		// and hidden files by default (find does not). Silent under-match
-		// when searching for a file that lives in an ignored path.
-		Line: "fd: hides gitignored and hidden files BY DEFAULT (unlike `find`). Silently under-matches when the target lives in an ignored/hidden path. Use `fd -HI PATTERN` (or `--hidden --no-ignore`) to include them.",
+		Rule: "rg-ignore-file-hides-target",
+		// Same class as the rg-ignore case above, shared rule (pattern
+		// covers rg/fd/fdfind together).
+		Line: "fd: hides gitignored and hidden files BY DEFAULT (unlike `find`). Use `fd -HI PATTERN` (or `--hidden --no-ignore`) to include them.",
 	},
 	{
 		Tool: "sd",
+		Rule: "sd-replacement-shell-var",
 		// Reported 2026-07-28, measured against sd 1.0.0. Orthogonal to
 		// the in-place entry below: the write is intended, the CONTENT is
-		// wrong. Listed here because the sed reflex that makes `$` safe
-		// is the reflex that breaks it in sd.
-		Line: "sd: the REPLACEMENT string has its own `$` grammar — `$NAME` is a named capture-group reference, and an unmatched reference expands to EMPTY instead of erroring. `sd 'x' 'a$HERE/b'` emits `a/b`, exit 0. This inverts the sed habit: single quotes are what make `$FOO` literal in sed, because sed has no `$` grammar of its own; in sd the quotes stop the shell and then sd interpolates anyway. Double the `$` for a literal (`$$NAME`), or use double quotes and let the shell expand it first.",
+		// wrong.
+		Line: "sd: the REPLACEMENT string has its own `$` grammar — `$NAME` is a capture-group reference, and an unmatched one expands to EMPTY, not an error. `sd 'x' 'a$HERE/b'` emits `a/b`, exit 0. Double the `$` for a literal (`$$NAME`), or use double quotes and let the shell expand it first.",
 	},
 	{
 		Tool: "sd",
+		Rule: "sd-in-place-write",
 		// Sibling hazard to the rg case: `sd modifies files in-place by
-		// default` (per `sd --help`). Sed habit is `sed 's/…/…/' file`
-		// prints to stdout; `sed -i` writes in-place. In sd there is no
-		// `-i` — the file arg IS the write target. So `sd 'foo' 'bar'
-		// file.txt` you typed expecting a preview has already overwritten
-		// file.txt. Different shape from rg -r (no flag reassignment,
-		// just a different default), same class (silent success + wrong
-		// file on disk).
-		Line: "sd: modifies files IN PLACE by default (no `-i` needed, unlike sed). `sd 'foo' 'bar' file.txt` overwrites file.txt immediately. For a preview use `sd -p 'foo' 'bar' file.txt`; for stdout use `cat file.txt | sd 'foo' 'bar'`.",
+		// default` (per `sd --help`), unlike sed which needs `-i`. This
+		// is the entry that proved prose-alone doesn't stop the loss —
+		// see the "Second bar" note on the struct above. 3 block
+		// escalations exist as siblings in rules.go
+		// (sd-in-place-write-secret-file/-redaction/-empty).
+		Line: "sd: modifies files IN PLACE by default (no `-i` needed, unlike sed). `sd 'foo' 'bar' file.txt` overwrites immediately. Preview: `sd -p 'foo' 'bar' file.txt`. Stdout: `cat file.txt | sd 'foo' 'bar'`.",
 	},
 	{
 		Tool: "sponge",
+		Rule: "sponge-eats-failed-pipeline",
 		// Reported 2026-08-07 after `grep -vxF "$LINE" "$M" | sponge "$M"`
 		// took an auto-memory index to 0 bytes. Measured, not assumed:
 		// `false | sponge m.md` takes a 17-byte file to 0 with exit 0.
-		Line: "sponge: `cmd | sponge FILE` writes an EMPTY file if cmd fails. sponge commits whatever the pipeline produced, and a failed command produces nothing — exit 0, no warning, original gone. This bites hardest because sponge is reached for precisely when the target and the source are the SAME file, which is when an empty write is unrecoverable. Guard it: `out=$(cmd) && printf '%s\\n' \"$out\" > FILE`, or write a temp path and `mv` after checking the status.",
+		Line: "sponge: `cmd | sponge FILE` writes an EMPTY file if `cmd` fails — exit 0, no warning, original gone. Guard: `out=$(cmd) && printf '%s\\n' \"$out\" > FILE`.",
 	},
 	{
+		Rule: "grep-dash-pattern",
 		// Shell-level, so no Tool gate. Reported 2026-08-07 alongside the
-		// sponge entry above; the two stacked into one loss. A pattern
-		// beginning with `-` is parsed as an option bundle: `grep -vxF
-		// "- [Leave it]" FILE` exits 2 with a usage error and no matches.
-		// True of GNU grep; on hosts where `grep` is ugrep the error text
-		// is unfamiliar enough to read as a different failure.
-		Line: "grep/rg: an OPERAND that starts with `-` is parsed as an OPTION, whether it is your pattern or your filename. Two outcomes and the second is the quiet one: `grep -E '--- FAIL' f` exits 2 with a usage error, but `grep -E '-v' f` exits 1 with NO message — `-v` is a valid flag, so grep inverts the match instead of searching for the literal text, and the empty result reads as \"no matches\". Markdown list items, diff lines, arrows (`->`), and flag names all start with `-`. Pass `--` first (`grep -- \"$PATTERN\" FILE`) or name it with `-e`.",
+		// sponge entry above; the two stacked into one loss.
+		Line: "grep/rg: an OPERAND starting with `-` is parsed as an OPTION. `grep -E '-v' f` exits 1 with NO message (`-v` = invert-match) — reads as \"no matches\" instead of an error. Pass `--` first or name it with `-e`.",
 	},
 	{
+		Rule: "pipe-eats-exit-status",
 		// Shell-level, so no Tool gate. Reported 2026-08-06, three
-		// sightings in two sessions. The first was a background `git
-		// push` that reported exit code 0 on a rejected push and was
-		// caught minutes later by comparing rev-parse against the remote.
-		// Two of the three had an EXPLICIT `echo "EXIT=$?"` written right
-		// after the pipeline — the author was deliberately printing the
-		// status of the thing they cared about, and got the filter's.
-		Line: "pipes: a pipeline's exit status is the LAST stage's, so `cmd | tail`/`| head` reports the trimmer's success and a failed `cmd` reads as exit 0 — a rejected `git push` or a `go install` that printed \"does not contain package\" both report success to a `set -e` script, a CI step, or a background-task runner. `2>&1` does not help; it just gives `tail` more lines to discard. Use `set -o pipefail`, read `${PIPESTATUS[0]}` before anything else runs (including the `echo` that reads it), or redirect to a file instead of piping. `| grep`/`| rg` additionally exit 1 when nothing matched, so filtering a test run down to its failures reports FAILURE on the green run.",
+		// sightings in two sessions, two with an explicit `echo "EXIT=$?"`
+		// that printed the filter's status, not the command's.
+		Line: "pipes: exit status is the LAST stage's — `cmd | tail`/`head`/`grep`/`rg` reports the trimmer's status, so a failed `git push` or `go install` piped through one reads as exit 0. Use `set -o pipefail` or check `${PIPESTATUS[0]}` immediately.",
 	},
 	{
+		Rule: "pgrep-f-self-match",
 		// Shell-level. Reported 2026-08-05 from a session that found two
-		// of its own predecessors' wait loops still running, days old,
-		// having outlived the job, the session, and every session since.
-		Line: "pgrep/pkill: `-f` matches the FULL command line of every process, and Claude Code runs each Bash call as `bash -c '<the whole command>'` — so the pattern text is in the issuing shell's own cmdline and `-f` matches it. `until ! pgrep -f foo; do sleep 10; done` matches itself and never exits, silently and cheaply enough to go unnoticed for days; `pkill -f foo` kills its own shell. A PID cannot match itself: `cmd & PID=$!` then `kill -0 $PID` to wait, `kill $PID` to stop it.",
+		// of its own predecessors' wait loops still running, days old.
+		// pkill-f-self-match is the sibling escalation in rules.go.
+		Line: "pgrep/pkill: `-f` matches the FULL command line — including the `bash -c` shell running THIS command. A wait/kill loop on `-f` can match itself (silent hang, or self-kill). Match a PID instead: `cmd & PID=$!`, then `kill -0 $PID` / `kill $PID`.",
 	},
 	{
+		Rule: "",
 		// Not a silent-CORRUPTION case like the rest — the tool never
-		// ran at all. It earns its place because the result is the most
-		// ordinary thing a search produces (nothing), and every idiom
-		// around a search hides the cause: `2>/dev/null` because searches
-		// are noisy, `| head` because they are long, `|| echo none`
-		// because empty is expected. Reported 2026-08-05 after a session
-		// twice reported files absent from a directory they were at
-		// depth 1 of.
+		// ran at all. Not regex-detectable (absence of a binary, not a
+		// command shape), so this is the ONLY place this hazard is ever
+		// explained — kept at full length deliberately, unlike the
+		// terse entries above. Reported 2026-08-05.
 		// Deliberately backtick-free where the canonical names appear:
 		// renameBinaries rewrites a name that follows a backtick, so
 		// "`fd` is fdfind here" would render as "fdfind is fdfind here".
@@ -342,16 +358,28 @@ func renderGotchas(present []probe.Entry, renames map[string]string) string {
 	for _, e := range present {
 		have[e.Name] = true
 	}
-	var b strings.Builder
+	var lines []string
 	for _, g := range gotchas {
 		if g.Tool != "" && !have[g.Tool] {
+			continue
+		}
+		lines = append(lines, "- "+renameGotchaLine(g, renames))
+	}
+
+	var b strings.Builder
+	truncated := false
+	for _, line := range lines {
+		if b.Len()+len(line)+1 > GotchaBudgetChars {
+			truncated = true
 			continue
 		}
 		if b.Len() > 0 {
 			b.WriteByte('\n')
 		}
-		b.WriteString("- ")
-		b.WriteString(renameGotchaLine(g, renames))
+		b.WriteString(line)
+	}
+	if truncated {
+		b.WriteString("\n- (gotcha list truncated to fit budget; see the `gotchas` var in internal/inject/inject.go, and the matching rule's Fix text in internal/suggest/rules.go, for the rest)")
 	}
 	return b.String()
 }

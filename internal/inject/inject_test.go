@@ -135,3 +135,50 @@ func TestRenderIdiomsBudgetCap(t *testing.T) {
 		t.Errorf("expected truncation marker for over-budget list; got len=%d", len(got))
 	}
 }
+
+// TestRenderGotchasFilteredByPresentTool — a Tool-gated gotcha only
+// surfaces when that tool is present; a Tool-less gotcha (command-not-found)
+// always surfaces.
+func TestRenderGotchasFilteredByPresentTool(t *testing.T) {
+	m := probe.Manifest{
+		Version: 2,
+		// note: no sponge
+	}
+	got := renderGotchas(m.Present, nil)
+	if strings.Contains(got, "sponge:") {
+		t.Error("sponge gotcha surfaced despite sponge being absent")
+	}
+	if !strings.Contains(got, "command-not-found") {
+		t.Error("Tool-less gotcha (command-not-found) should always surface")
+	}
+
+	m.Present = []probe.Entry{{Name: "sponge", Kind: "file", Path: "/usr/bin/sponge"}}
+	got = renderGotchas(m.Present, nil)
+	if !strings.Contains(got, "sponge:") {
+		t.Error("sponge gotcha should surface once sponge is present")
+	}
+}
+
+// TestRenderGotchasBudgetCap — when the gotcha list exceeds
+// GotchaBudgetChars, the truncation marker must appear. gotchas is a
+// package-level var rather than a parameter, so this substitutes synthetic
+// oversized entries and restores the real table afterward.
+func TestRenderGotchasBudgetCap(t *testing.T) {
+	orig := gotchas
+	defer func() { gotchas = orig }()
+
+	huge := strings.Repeat("x", GotchaBudgetChars/5+10)
+	gotchas = []gotcha{
+		{Line: huge},
+		{Line: huge},
+		{Line: huge},
+		{Line: huge},
+		{Line: huge},
+		{Line: huge},
+	}
+
+	got := renderGotchas(nil, nil)
+	if !strings.Contains(got, "gotcha list truncated") {
+		t.Errorf("expected truncation marker for over-budget list; got len=%d", len(got))
+	}
+}

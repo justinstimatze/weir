@@ -79,6 +79,14 @@ To see which rule matched where in a single command, and whether its `Suppress` 
 WEIR_SPAN='your command here' go test ./internal/suggest -run TestSpanProbe -v
 ```
 
+## Adding a gotcha
+
+Silent-failure gotchas live in [`internal/inject/inject.go`](internal/inject/inject.go) as a `[]gotcha`, surfaced unconditionally at SessionStart. Because that block is injected once and then resent at cache-read rates every turn until compaction, its size compounds far past what a single firing suggests — a 2026-08 token-cost audit found this section alone was over half of weir's entire SessionStart injection and the single biggest hook-cost line account-wide. Keep `Line` **terse**: mechanism, one concrete failure shape, the fix — no incident narrative, no second example. The full story belongs in the matching rule's `Fix` text in `rules.go`, which only gets paid for on the turn the risky command is actually typed.
+
+Every gotcha describing a destructive habit needs a `Rule` field naming the `internal/suggest` rule that catches it live — `Rule: ""` is permitted only when the habit genuinely isn't regex-detectable (currently just `command-not-found`, which stays at full length as the sole place that hazard is ever explained). `TestGotchaRulesExist` fails the build if a non-empty `Rule` doesn't match a name in `suggest.Rules`, so a rename on the rules.go side shows up here instead of rotting silently.
+
+`GotchaBudgetChars` caps the section the same way `IdiomBudgetChars`/`CompositionBudgetChars` cap theirs — belt-and-suspenders against the table growing unbounded again, since it once did.
+
 ## Adding a composition idiom
 
 Cross-tool idioms live in [`internal/idioms/composition.json`](internal/idioms/composition.json) as `{intent, cmd, tools}` entries. `tools` is the list of binaries that must be present on the host for the idiom to surface. The idiom is filtered into the SessionStart block by `inject.go` based on the live probe.
