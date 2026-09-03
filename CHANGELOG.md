@@ -2,6 +2,19 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.8 — 2026-09-03
+
+Second sighting of `sd-replacement-shell-var`, reported from a sibling session (aipotluck.org, 2026-09-02): the rule fired, printed its fix, and the corruption landed anyway. The command was editing TypeScript source, not a shell script — the result was syntactically valid, just wrong (two import paths silently lost their `$` prefix), with no runtime to fail fast and nobody re-reading the diff before it moved on.
+
+### Fixed
+- **`sd-replacement-shell-var` now catches a double-quoted, backslash-escaped `$NAME` directly.** The reported command only matched the existing pattern by coincidence — its double-quoted replacement happened to contain literal single quotes (from the TypeScript import syntax itself) that satisfied the rule's single-quoted branch. Checked independently: a clean double-quoted `"...\$NAME..."` with no stray quotes anywhere wasn't caught at all before this fix. The pattern now has an explicit branch for it, so the shape fires for the right reason instead of a lucky accident of the surrounding source text.
+
+### Added
+- **`sd-replacement-shell-var-no-capture-group`** (BLOCK): narrower than the base rule — fires only when the search pattern defines zero capture groups of any kind (named or plain), the state where `$NAME` cannot resolve under any reading. An advisory can be skimmed, and this failure gives no second chance to notice; the base rule stays advisory for the ambiguous cases (a real numbered or named group present).
+- Base rule's `Fix` text now says the failure is silent and deferred — exit 0, no warning, and the result can look like valid source rather than a parse error — a cost the original text didn't name.
+
+Measured post-fix: 39 fires / 0.021% of 188,432 corpus calls — comfortably inside the tripwire band, spans read clean.
+
 ## v0.1.7 — 2026-08-31
 
 A cross-project 7-day token-cost audit (real API usage data from Claude Code transcripts, resend-weighted by how many turns each injected block sits in context before compaction) found weir's `SessionStart` hook was 13.9% of all hook+MCP spend account-wide and 85%+ of all hook cost specifically — bigger than every other maintained hook or MCP server combined except `linear`. The cause wasn't call frequency: `weir suggest` (`PreToolUse:Bash`) only costs anything on the rare turn a matching command appears, measured at 637 bytes per single-rule fire. `weir inject` (`SessionStart`) fires once, unconditionally, every session, and then gets resent at cache-read rates on every subsequent turn until compaction — a block injected once at t=0 and read back 100+ times compounds past what its single firing suggests.
