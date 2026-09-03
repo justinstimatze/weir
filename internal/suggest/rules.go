@@ -315,14 +315,35 @@ var Rules = []Rule{
 	// opposite of its usual result. Reported 2026-07-28 from twip
 	// against sd 1.0.0, with a measured table.
 	//
-	// Fires on the SINGLE-QUOTED replacement only. A double-quoted or
-	// bare `$NAME` is expanded by the shell before sd ever sees it,
-	// which is the documented way to interpolate and must stay silent.
+	// Fires on the single-quoted replacement, AND on a double-quoted
+	// replacement where the `$` is backslash-escaped (`"...\$NAME..."`) —
+	// the escape is exactly what stops the shell from expanding it, so sd
+	// still sees a literal `$NAME` and still reads it as a capture-group
+	// reference. A double-quoted, UN-escaped `$NAME` is expanded by the
+	// shell before sd ever sees it and correctly stays silent; that shape
+	// has its own ruleNegative fixture.
 	// `$$NAME` is sd's escape for a literal `$` and is excluded by the
-	// `(?:[^'$]|\$\$)*` run. `$1` / `${1}` never trip it — a digit is
-	// neither a letter nor `_`. Both positional forms match: the pipe
-	// form corrupts its output exactly as badly as the in-place form,
-	// so this one deliberately does NOT require a file operand.
+	// `(?:[^'$]|\$\$)*` run — but only in the single-quoted branch. The
+	// double-quoted branch has no equivalent exclusion: `"..."` gives `$$`
+	// its own special shell meaning (the shell's PID) whether escaped or
+	// not, so a double-quoted `\$\$NAME` is not a case this rule reasons
+	// about — known gap, not worth a second RE2 branch for.
+	// `$1` / `${1}` never trip it — a digit is neither a letter nor `_`.
+	// Both positional forms match: the pipe form corrupts its output
+	// exactly as badly as the in-place form, so this one deliberately does
+	// NOT require a file operand.
+	//
+	// Second sighting 2026-09-02 from aipotluck.org: this rule fired
+	// (via the single-quoted branch, coincidentally — the search pattern
+	// was a double-quoted TS import string whose own literal `'./$types'`
+	// quotes happened to satisfy that branch) on a double-quoted, escaped
+	// `\$types`/`\$lib` replacement, printed its Fix, and the command ran
+	// anyway: two import paths silently lost their `$` prefix. The double-
+	// quoted branch above closes the coincidence — the same command now
+	// matches for the actual reason, not a lucky accident of the source
+	// text. That sighting is also why this Fix text below now says the
+	// failure is silent and deferred, and why the block escalation right
+	// after this rule exists.
 	//
 	// Suppressed when a named group (`(?P<name>` or `(?<name>`) appears
 	// anywhere in the command, which is the legitimate use and
@@ -332,9 +353,39 @@ var Rules = []Rule{
 	// contains an sd is not worth a second regex to distinguish.
 	{
 		Name:     "sd-replacement-shell-var",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
 		Suppress: regexp.MustCompile(`\(\?P?<[A-Za-z_]`),
-		Fix:      "sd's replacement string reads `$NAME` as a CAPTURE-GROUP reference, not a shell variable — and an unmatched reference expands to EMPTY rather than erroring, so the text silently disappears (`sd 'x' 'a$HERE/b'` emits `a/b`, exit 0). This is the opposite of sed, where single quotes make `$NAME` literal. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes and let the shell expand it before sd sees it. Numeric refs (`$1`) and named groups you actually defined are fine.",
+		Fix:      "sd's replacement string reads `$NAME` as a CAPTURE-GROUP reference, not a shell variable — and an unmatched reference expands to EMPTY rather than erroring, so the text silently disappears (`sd 'x' 'a$HERE/b'` emits `a/b`, exit 0; `sd 'x' \"a\\$HERE/b\"` — backslash-escaped inside double quotes — does the same). You will NOT see this fail: exit 0, no warning, and in source code the result is often still syntactically valid, just wrong (an import path missing its prefix, not a parse error). This is the opposite of sed, where single quotes make `$NAME` literal. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Numeric refs (`$1`) and named groups you actually defined are fine.",
+	},
+	// --- same trap, narrowed to the unambiguous case: block it -------------
+	// Second sighting above showed advise alone isn't enough for this one:
+	// the rule fired, printed the fix, and the corruption landed anyway,
+	// because an advisory can be skimmed — and this failure gives no
+	// second chance to notice, unlike e.g. rg -r's visible bad output.
+	//
+	// This does NOT promote the base rule wholesale — CONTRIBUTING's block
+	// bar wants no legitimate reading of the command as typed, and the base
+	// rule's own Suppress only rules out a NAMED group; a plain unnamed
+	// group (`(x)` with `$1`) is a legitimate case the base rule's char
+	// class already excludes by construction (digits never match
+	// `[A-Za-z_]`), but a plain group's mere PRESENCE says the author
+	// knows capture-group syntax, same evidentiary weight as a named one —
+	// so it's folded into this rule's Suppress too, not the base rule's.
+	//
+	// Fires only when the base pattern matches AND the whole command
+	// defines no capture group of ANY kind — no named group, no plain
+	// `(...)`, only `(?:...)` (non-capturing) allowed. In that state
+	// `$NAME` cannot resolve under any reading; there is nothing to weigh
+	// against blocking. `\((?:\?P?<[A-Za-z_]|[^?)])` matches an opening
+	// paren immediately followed by either a named-group opener or any
+	// character that isn't `?`/`)` — i.e. any capturing form, named or
+	// plain — while `(?:` (the `?` right after `(`) and `()` fall through.
+	{
+		Name:     "sd-replacement-shell-var-no-capture-group",
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
+		Suppress: regexp.MustCompile(`\((?:\?P?<[A-Za-z_]|[^?)])`),
+		Fix:      "sd's replacement references `$NAME`/`\\$NAME` and the search pattern defines NO capture group at all — not even a numbered one. There is no reading under which that reference resolves to anything but empty, so this refuses rather than advise: an unmatched capture-group reference silently deletes text, exit 0, and the result can be valid-looking source (a shortened import path, not a parse error) that nobody re-reads. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Rewrite and retry.",
+		Action:   "block",
 	},
 	// --- self-match trap: a pattern that matches the shell running it -----
 	// Claude Code runs every Bash call as `bash -c '<the whole command>'`,

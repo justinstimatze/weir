@@ -82,6 +82,28 @@ var positives = []struct {
 	{`printf 'x\n' | sd 'x' 'a$HERE/b'`, "sd-replacement-shell-var"},
 	{`sd 'foo' 'user-$USERNAME' notes.md`, "sd-replacement-shell-var"},
 	{`cat f | sd '(\w+)' 'got:$name'`, "sd-replacement-shell-var"},
+	// Second sighting, v0.1.8 — reported from a sibling session
+	// (aipotluck.org): the rule fired via the single-quoted branch by
+	// coincidence (a double-quoted TS import string's own literal
+	// './$mod' quotes satisfied it), was advisory, and the corruption
+	// landed anyway in source, not a shell script — syntactically valid
+	// TypeScript with a silently truncated import path, no runtime to
+	// fail fast. The double-quoted branch below makes this fire for the
+	// actual reason instead of a lucky accident of the source text.
+	{`sd "import \{ A, B \} from './\\\$mod';" "import { B } from './\$mod';" file.ts`, "sd-replacement-shell-var"},
+	// Clean double-quoted, backslash-escaped $, with no stray single
+	// quotes anywhere — this is the case the coincidence above was
+	// masking. Before the double-quoted branch existed, this did not
+	// fire at all: shWord's '"[^"]*"' word never contains a bare `'`,
+	// so nothing satisfied the single-quoted branch's `'...'` requirement.
+	{`sd 'x' "a\$HERE/b" file.txt`, "sd-replacement-shell-var"},
+	// No capture group anywhere in the pattern ('x' matches literal text,
+	// zero groups) — the narrower escalation should ALSO fire on this
+	// exact command, on top of the base advisory above.
+	{`sd 'x' "a\$HERE/b" file.txt`, "sd-replacement-shell-var-no-capture-group"},
+	// Same shape, but the pipe form — escalation isn't gated on a file
+	// operand any more than the base rule is.
+	{`printf 'x\n' | sd 'x' 'a$HERE/b'`, "sd-replacement-shell-var-no-capture-group"},
 	// pgrep -f matches the bash -c shell running the command, so a wait
 	// loop never exits — v0.1.7, reported from lexicon with two orphaned
 	// loops days old. Gated on the loop/kill pairing.
@@ -291,6 +313,15 @@ var ruleNegatives = []struct {
 	{`sd '(x)' 'got:${1}' file.txt`, "sd-replacement-shell-var"},
 	{`sd '(?P<thing>x)' 'got:$thing' file.txt`, "sd-replacement-shell-var"},
 	{`sd '(?<thing>x)' 'got:$thing' file.txt`, "sd-replacement-shell-var"},
+	// Escalation is narrower than the base rule: a PLAIN unnamed group's
+	// mere presence suppresses it too, even though `$name` doesn't
+	// actually address that group by number — the base rule (positive
+	// fixture above, line 84) stays advisory for this shape on purpose.
+	{`cat f | sd '(\w+)' 'got:$name'`, "sd-replacement-shell-var-no-capture-group"},
+	// Named/numbered-group cases that suppress or exempt the base rule
+	// must not somehow trip the escalation either.
+	{`sd '(x)' 'got:$1' file.txt`, "sd-replacement-shell-var-no-capture-group"},
+	{`sd '(?P<thing>x)' 'got:$thing' file.txt`, "sd-replacement-shell-var-no-capture-group"},
 	// uuoc owns this one; the pipeline rules must stay out of it because
 	// `cat` changes no state and losing its status costs nothing.
 	{`cat access.log | rg ERROR`, "pipe-eats-exit-status"},
