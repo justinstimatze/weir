@@ -2,6 +2,13 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.9 — 2026-09-05
+
+Fourth sighting of `pipe-eats-exit-status`, reported from aipotluck.org: the advisory fired on exactly the shape it names — `git push ... 2>&1 | tail` from a background task — and the command ran anyway. The rejected push (a failing pre-push hook) then reported "completed (exit code 0)" to the harness, briefly trusted as proof the push had succeeded.
+
+### Changed
+- **`pipe-eats-exit-status` is now BLOCK, not advise.** Same escalation logic already used for the `sd-in-place-write-*` and `sd-replacement-shell-var-no-capture-group` rules: for a command whose whole point is a status nobody else will see directly — a background runner, a CI step, an agent harness's own "exit code 0" summary — the advisory text arrives in the same turn as the tool result, after the pipeline has already run and already reported the wrong status upstream. `stateChanging` keeps this narrowly scoped (git push/pull, go install, cargo install/publish, pip install, npm publish, terraform apply/destroy, kubectl apply, docker push, gh release, rsync, scp piped to tail/head/grep/rg) — measured at ~0.1% of calls — so the block bar (a rewrite that's always safe, never a false trap) holds: `set -o pipefail`, `PIPESTATUS`, or redirect-to-file are all always-correct fixes with no case where the piped-and-silently-wrong form was actually the intended behavior. `pipe-status-echo` (the sibling rule for an explicit `echo $?` read) stays advisory — it's not scoped to `stateChanging` and a deliberate check of a filter's own exit status is a real, if rare, thing to want.
+
 ## v0.1.8 — 2026-09-03
 
 Second sighting of `sd-replacement-shell-var`, reported from a sibling session (aipotluck.org, 2026-09-02): the rule fired, printed its fix, and the corruption landed anyway. The command was editing TypeScript source, not a shell script — the result was syntactically valid, just wrong (two import paths silently lost their `$` prefix), with no runtime to fail fast and nobody re-reading the diff before it moved on.

@@ -492,11 +492,26 @@ var Rules = []Rule{
 	// a background `git push` that reported exit 0 on a rejected push and
 	// was caught minutes later by comparing `git rev-parse HEAD` against
 	// `origin/develop`.
+	//
+	// Fourth sighting, 2026-09-05 (aipotluck.org): advisory fired on exactly
+	// this shape — `git push ... 2>&1 | tail` from a background task — and
+	// the command ran anyway. The rejected push (a failing pre-push hook)
+	// then reported "completed (exit code 0)" to the harness, which was
+	// briefly treated as proof of a successful push. Same escalation logic
+	// as `sd-in-place-write-*`: for a command whose whole point is a status
+	// nobody else will see (a background runner, a CI step, an agent
+	// harness's own "exit code 0" summary), the advisory text arrives in
+	// the same turn as the tool result — after the pipeline has already
+	// run and already reported the wrong status upstream. An advisory can
+	// be skimmed past exactly like it was here; blocking is what forces the
+	// rewrite before that status ever gets consumed by something that
+	// trusts it.
 	{
 		Name:     "pipe-eats-exit-status",
 		Pattern:  regexp.MustCompile(stateChanging + redirGap + `\|\s*(?:tail|head|grep|rg)\b`),
 		Suppress: regexp.MustCompile(`pipefail|PIPESTATUS`),
-		Fix:      "A pipeline exits with its LAST stage's status, so `CMD | tail`/`| head` reports the trimmer's success and a failed CMD reads as exit 0 — a rejected `git push` or a `go install` that printed \"does not contain package\" both report success to a background runner, a `set -e` script, or a CI step. `2>&1` does not help; it just gives `tail` more lines to discard. Use `set -o pipefail`, or redirect and read the status directly: `CMD > out.log 2>&1; echo \"exit: $?\"`. When the command's job is to produce or replace an artifact, check the artifact — a `stat` timestamp or a `--version` is a measurement, a status is a claim.",
+		Fix:      "A pipeline exits with its LAST stage's status, so `CMD | tail`/`| head` reports the trimmer's success and a failed CMD reads as exit 0 — a rejected `git push` or a `go install` that printed \"does not contain package\" both report success to a background runner, a `set -e` script, or a CI step. `2>&1` does not help; it just gives `tail` more lines to discard. Use `set -o pipefail`, or redirect and read the status directly: `CMD > out.log 2>&1; echo \"exit: $?\"`. When the command's job is to produce or replace an artifact, check the artifact — a `stat` timestamp or a `--version` is a measurement, a status is a claim. Rewrite the command and retry.",
+		Action:   "block",
 	},
 	{
 		Name:     "pipe-status-echo",
