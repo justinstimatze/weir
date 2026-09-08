@@ -2,6 +2,8 @@ package probe
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -131,4 +133,72 @@ func TestDedupeSymlinkAliasesNoOpWhenOnlyOne(t *testing.T) {
 	if len(out) != 2 {
 		t.Errorf("expected no dedup when only one of the pair is present; got %d", len(out))
 	}
+}
+
+// TestCanonicalNameResolvesWithoutDebAlt locks in the macOS case: Homebrew
+// installs fd/bat under their plain canonical names (no fdfind/batcat
+// rename -- that only exists because Debian's own archive had unrelated
+// packages already using those names). A fully isolated $PATH containing
+// ONLY the canonical binary, no alias, must still resolve -- catching a
+// regression where Run() started requiring the alias to exist, or a wrong
+// belief that the probe needs a macOS-specific branch at all.
+func TestCanonicalNameResolvesWithoutDebAlt(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeExe(t, dir, "fd")
+	restore := setPath(t, dir)
+	defer restore()
+
+	m := Run()
+	e := findEntry(m.Present, "fd")
+	if e == nil {
+		t.Fatalf("fd not in Present with only the canonical binary on PATH; got %+v", m)
+	}
+	if e.Path != dir+"/fd" {
+		t.Errorf("fd resolved to %q; want %q", e.Path, dir+"/fd")
+	}
+}
+
+// TestDebAltFallbackStillWorks is the Debian-side sibling of the test
+// above: with ONLY the aliased binary on PATH (no canonical name), the
+// fallback lookup must still find it.
+func TestDebAltFallbackStillWorks(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeExe(t, dir, "fdfind")
+	restore := setPath(t, dir)
+	defer restore()
+
+	m := Run()
+	e := findEntry(m.Present, "fd")
+	if e == nil {
+		t.Fatalf("fd not in Present with only fdfind on PATH; got %+v", m)
+	}
+	if e.Path != dir+"/fdfind" {
+		t.Errorf("fd resolved to %q; want %q (the debAlt binary)", e.Path, dir+"/fdfind")
+	}
+}
+
+func findEntry(entries []Entry, name string) *Entry {
+	for i := range entries {
+		if entries[i].Name == name {
+			return &entries[i]
+		}
+	}
+	return nil
+}
+
+func writeFakeExe(t *testing.T, dir, name string) {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("writing fake %s: %v", name, err)
+	}
+}
+
+func setPath(t *testing.T, dir string) func() {
+	t.Helper()
+	old := os.Getenv("PATH")
+	if err := os.Setenv("PATH", dir); err != nil {
+		t.Fatalf("setting PATH: %v", err)
+	}
+	return func() { os.Setenv("PATH", old) }
 }
