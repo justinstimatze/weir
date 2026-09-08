@@ -23,6 +23,10 @@ var positives = []struct {
 	{`find . -name '*.py' -exec wc -l {} \;`, "find-exec-semi"},
 	{"sort file.txt | uniq", "sort-uniq"},
 	{"awk '{print $1}' file | awk '{print $2}'", "awk-awk"},
+	// OS-gated to darwin -- TestPositives forces goos for this one check.
+	// See TestRuleNegatives below for the same command confirmed NOT to
+	// fire under the ambient (linux, on CI) goos.
+	{"sed -i 's/x/y/' file.txt", "bsd-sed-i-mandatory-arg"},
 	{"python3 deploy/eval.py 2>/tmp/eval-stderr2.log; echo '---'; cat /tmp/eval-stderr2.log | grep -i error | head -10", "uuoc"},
 	{"which python3", "which-vs-command-v"},
 	{"which python3 && python3 -V", "which-vs-command-v"},
@@ -364,6 +368,13 @@ var ruleNegatives = []struct {
 	{"rg pattern file.txt\n~/.claude/projects leftover", "rg-ignore-file-hides-target"},
 	{"sd 'PAT'\n" + `echo "literal text \` + `${VAR}here"`, "sd-replacement-shell-var"},
 	{"sd 'PAT'\n" + `echo "literal text \` + `${VAR}here"`, "sd-replacement-shell-var-no-capture-group"},
+
+	// bsd-sed-i-mandatory-arg is OS-gated to darwin. Run under the ambient
+	// goos (linux, on CI and this dev host) with no override, this is the
+	// same command the darwin-only positive fixture above uses -- correct
+	// GNU sed usage that must NOT be flagged here, confirming the gate
+	// itself works, not just the regex.
+	{"sed -i 's/x/y/' file.txt", "bsd-sed-i-mandatory-arg"},
 }
 
 func names(rs []Rule) []string {
@@ -384,12 +395,33 @@ func contains(s []string, x string) bool {
 }
 
 func TestPositives(t *testing.T) {
+	ruleOS := make(map[string]string, len(Rules))
+	for _, r := range Rules {
+		ruleOS[r.Name] = r.OS
+	}
 	for _, p := range positives {
+		// An OS-gated rule's fixture runs under that OS regardless of the
+		// host actually running the test -- see TestOSGatedRuleOnlyFiresOnItsOS
+		// for the negative half (it must NOT fire under a different goos).
+		restore := setGOOS(t, ruleOS[p.Want])
 		got := names(Match(p.Cmd))
+		restore()
 		if !contains(got, p.Want) {
 			t.Errorf("positive: %q\n  expected %q in matches; got %v", p.Cmd, p.Want, got)
 		}
 	}
+}
+
+// setGOOS overrides the package-level goos var for the duration of one
+// check when os is non-empty (an OS-gated rule); a no-op restore otherwise.
+func setGOOS(t *testing.T, os string) func() {
+	t.Helper()
+	if os == "" {
+		return func() {}
+	}
+	old := goos
+	goos = os
+	return func() { goos = old }
 }
 
 func TestNegatives(t *testing.T) {
@@ -488,5 +520,21 @@ func TestRunFailOpen(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Errorf("expected no output on bad input; got %q", out.String())
+	}
+}
+
+// TestBSDSedIRuleSuppressedOnEmptyExtension exercises the Suppress branch
+// of bsd-sed-i-mandatory-arg specifically -- the explicit `-i ”` form is
+// the correct BSD way to write this, and must stay silent even with the
+// OS gate open (goos forced to "darwin"), not just under the ambient
+// (linux) goos where the whole rule wouldn't fire anyway.
+func TestBSDSedIRuleSuppressedOnEmptyExtension(t *testing.T) {
+	old := goos
+	goos = "darwin"
+	defer func() { goos = old }()
+
+	got := names(Match(`sed -i '' 's/x/y/' file.txt`))
+	if contains(got, "bsd-sed-i-mandatory-arg") {
+		t.Errorf("bsd-sed-i-mandatory-arg fired on the explicit empty-extension form; got %v", got)
 	}
 }

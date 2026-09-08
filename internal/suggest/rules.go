@@ -1,6 +1,9 @@
 package suggest
 
-import "regexp"
+import (
+	"regexp"
+	"runtime"
+)
 
 // Rule describes an antipattern detection: Pattern fires the rule; Suppress
 // (optional) is an antidote — if it ALSO matches the same command, the rule
@@ -21,6 +24,7 @@ type Rule struct {
 	Suppress *regexp.Regexp
 	Fix      string
 	Action   string // "" | "advise" (default) | "block"
+	OS       string // "" (default, fires everywhere) | a runtime.GOOS value
 }
 
 // Shell-word fragments, shared by the rules that count positional arguments.
@@ -402,6 +406,33 @@ var Rules = []Rule{
 		Fix:      "sd's replacement references `$NAME`/`\\$NAME` and the search pattern defines NO capture group at all — not even a numbered one. There is no reading under which that reference resolves to anything but empty, so this refuses rather than advise: an unmatched capture-group reference silently deletes text, exit 0, and the result can be valid-looking source (a shortened import path, not a parse error) that nobody re-reads. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Rewrite and retry.",
 		Action:   "block",
 	},
+	// --- silent-corruption trap: BSD sed's -i takes a MANDATORY, glued
+	// argument, unlike GNU's optional one --------------------------------
+	// macOS/BSD only. First rule in this file gated by OS -- see the OS
+	// field on Rule and goos in Match(). Everywhere else this is
+	// completely correct GNU usage; gating it universally would misfire
+	// on every Linux install, this one included.
+	//
+	// `sed -i extension` per BSD's own man page: the extension is
+	// mandatory, and it is read as the very next characters glued to
+	// `-i`, never a separate flag. `sed -i '' 's/x/y/' file` (explicit
+	// empty-string extension) is the correct BSD form. `sed -i 's/x/y/'
+	// file` -- the GNU-muscle-memory form, no separate extension -- gets
+	// `'s/x/y/'` consumed AS the extension, and `file` treated as the sed
+	// SCRIPT, with no file operand left at all. Reads clean, no error in
+	// the common case, and the source file is never touched. Found
+	// 2026-09-08 auditing weir against BSD tool behavior, not from a live
+	// incident.
+	//
+	// Suppressed on the explicit empty-string form, which is the correct
+	// usage this rule must not flag.
+	{
+		Name:     "bsd-sed-i-mandatory-arg",
+		Pattern:  regexp.MustCompile(cmdPos + `sed\b[^|\n;&]*` + argGap + `-i(?:\s|$)`),
+		Suppress: regexp.MustCompile(`\bsed\b[^|\n;&]*` + argGap + `-i` + argGap + `(?:''|"")`),
+		Fix:      "On macOS/BSD, sed's `-i` takes a MANDATORY argument glued to the flag -- unlike GNU sed, where it's optional. `sed -i 's/x/y/' file` reads `'s/x/y/'` as the -i extension and `file` as the sed SCRIPT, leaving no file operand at all -- it runs clean, no error, and never touches `file`. Use `sed -i '' 's/x/y/' file` (explicit empty-string extension) for the GNU-equivalent in-place edit, or `sed -i.bak 's/x/y/' file` to keep a backup.",
+		OS:       "darwin",
+	},
 	// --- self-match trap: a pattern that matches the shell running it -----
 	// Claude Code runs every Bash call as `bash -c '<the whole command>'`,
 	// so that shell's /proc/<pid>/cmdline contains the literal pattern
@@ -707,6 +738,10 @@ const stateChanging = `\b(?:git\s+(?:push|pull)` +
 	`|terraform\s+(?:apply|destroy)|kubectl\s+apply|docker\s+push` +
 	`|gh\s+release|rsync|scp)\b`
 
+// goos is runtime.GOOS, held in a var so tests can exercise an OS-gated
+// rule without actually running on that platform.
+var goos = runtime.GOOS
+
 // Match returns the subset of Rules whose patterns match cmd, after applying
 // any per-rule Suppress antidote. Block-action rules additionally suppress
 // matches that land inside a shell string context — quoted, or the body of
@@ -716,6 +751,9 @@ const stateChanging = `\b(?:git\s+(?:push|pull)` +
 func Match(cmd string) []Rule {
 	out := make([]Rule, 0, 2)
 	for _, r := range Rules {
+		if r.OS != "" && r.OS != goos {
+			continue
+		}
 		loc := r.Pattern.FindStringIndex(cmd)
 		if loc == nil {
 			continue
