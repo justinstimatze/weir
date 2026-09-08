@@ -118,6 +118,10 @@ var positives = []struct {
 	{`rg -oh 'https?://[^ ]+' a.md b.md`, "rg-h-is-help"},
 	{`rg -nh PATTERN src/`, "rg-h-is-help"},
 	{`rg -h 'https?://' notes.md`, "rg-h-is-help"},
+	// rg -L is --follow, not grep's --files-without-match. Found by the
+	// flag-overlap boundary sweep (data/flag_overlap.py), not an incident.
+	{`rg -L 'TODO' src/`, "rg-cap-l-misfire"},
+	{`rg -inL PATTERN dir/`, "rg-cap-l-misfire"},
 	// rg/fd honour .gitignore with no git in view — v0.1.7. Gated on a
 	// dot-path argument (28.5% precision vs 6.4% for the flag-absence gate).
 	{`rg -c 'EPISTEMIC CHECK' ~/.claude/projects/`, "rg-ignore-file-hides-target"},

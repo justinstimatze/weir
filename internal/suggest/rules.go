@@ -440,6 +440,30 @@ var Rules = []Rule{
 		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*\s(?:-[a-z]*h[a-z]+\b|-[a-z]+h[a-z]*\b|-h\s+['"a-zA-Z_./~])`),
 		Fix:     "In rg, `-h` is `--help`, NOT `--no-filename` — that is `-I` or `-N`. `rg -oh PAT files` prints the usage text on stdout with exit 0; the pattern and file list are never read, and piped into `sort`/`head` it reads as a clean result set that happens to contain no matches. Use `rg -o -N PAT files` (or `-I`). `-o` alone is enough for a single file.",
 	},
+	// --- silent-scope trap: grep -L's meaning does not survive to rg ------
+	// Found by data/flag_overlap.py, a systematic sweep of every --help
+	// flag letter shared between a classic tool and its weir-suggested
+	// replacement — not a live incident like the other rg rules on this
+	// page. Recorded here as-found rather than backdated to look like one.
+	//
+	// grep -L (--files-without-match) prints the names of files that do
+	// NOT contain a match — the standard "find files missing X" idiom for
+	// an audit or batch-fix script. In ripgrep, -L is --follow (follow
+	// symlinks while searching); rg's actual files-without-match has no
+	// short flag at all, only the long form. `rg -L PATTERN dir` runs
+	// clean, exit 0, and prints files that DO contain a match, the
+	// opposite selection from what -L means in grep — silent, not a
+	// parse error, because -L is a valid rg flag on its own.
+	//
+	// Advisory, not block: unlike -r and -h above, there is no shape here
+	// that is unambiguously the mistake. `rg -L` is also plain English for
+	// "follow symlinks," a real thing to want, and this rule has no way to
+	// tell the two intentions apart from the command text alone.
+	{
+		Name:    "rg-cap-l-misfire",
+		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*\s-[A-Za-z]*L[A-Za-z]*\b`),
+		Fix:     "In rg, `-L` is `--follow` (follow symlinks), NOT `--files-without-match` — that grep flag has no short form in rg at all. `rg -L PATTERN dir` runs clean and lists files that DO match, the opposite of what -L selects in grep. If you want files lacking a match, use `rg --files-without-match PATTERN dir`. If you meant to follow symlinks, this is a false alarm — carry on.",
+	},
 	// --- silent-scope trap: an ignore file governs search, not just git ---
 	// rg and fd honour .gitignore whether or not a git operation is
 	// anywhere in view, so a deny-by-default ignore file makes an entire
