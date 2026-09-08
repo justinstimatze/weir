@@ -84,6 +84,25 @@ If you want it scoped to one project instead of globally, point at a project set
 CLAUDE_SETTINGS=/path/to/project/.claude/settings.json weir install
 ```
 
+## macOS
+
+Builds and runs there — `go install` and Homebrew both work, and the
+`darwin/amd64`/`darwin/arm64` binaries `weir install` pulls come from the
+same release as Linux's. Two things are worth knowing before relying on
+it heavily:
+
+- Rule correctness on macOS's default BSD userland — `grep`/`sed`/`find`/`ps`/`awk`,
+  a different implementation from the GNU tools this project's own corpus
+  was mined against — gets checked once per tagged release, in
+  `.github/workflows/release.yml`'s `macos-check` job. One BSD-specific
+  landmine already has a rule (`bsd-sed-i-mandatory-arg`, gated to fire
+  only on macOS); `ps`/`awk` haven't been audited against BSD behavior
+  yet.
+- The layer-1 capability manifest resolves `fd`/`bat` under their
+  Homebrew names directly — no macOS-specific code needed, since the
+  Debian `fdfind`/`batcat` rename this project accounts for never existed
+  on Homebrew in the first place.
+
 ## Subcommands
 
 | command | what it does |
