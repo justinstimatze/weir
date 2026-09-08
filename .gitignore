@@ -48,3 +48,10 @@ __pycache__/
 # entry, all written with placeholder paths.
 /FIELD_REPORT_*.md
 /GOTCHA-*.md
+
+# Same idea, same reason -- a working analysis that fed a rule or a CI
+# decision. Once the rule/job exists and CHANGELOG.md summarizes why, the
+# full scan or audit journal is scratch, not a public reference doc.
+/data/FLAG-OVERLAP-REVIEW.md
+/data/MACOS-COMPAT-AUDIT.md
+/data/flag_overlap_report.json

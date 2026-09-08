@@ -18,7 +18,7 @@ jobs:
   macos-check:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -31,9 +31,10 @@ jobs:
       - name: Install/uninstall cycle
         run: scripts/smoke.sh
       # Not a check -- captures real BSD --help/man text as CI log, the
-      # primary source for auditing rules.go's classic-tool assumptions
-      # (see data/MACOS-COMPAT-AUDIT.md, written against a FreeBSD-man-page
-      # proxy for lack of a better source before this job existed).
+      # primary source for auditing rules.go's classic-tool assumptions.
+      # See CHANGELOG.md for what the first audit pass found, done against
+      # a FreeBSD-man-page proxy for lack of a better source before this
+      # job existed.
       - name: Survey classic BSD tools
         run: |
           for t in grep sed find ps awk; do
