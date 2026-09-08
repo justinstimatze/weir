@@ -9,7 +9,44 @@ permissions:
   contents: write
 
 jobs:
+  # Runs once per tag, not on every push/PR -- macos-latest bills at ~10x
+  # the Linux per-minute rate on a private repo, so this is the one place
+  # darwin coverage runs. Gates the release: goreleaser already builds
+  # darwin/amd64+arm64 binaries (.goreleaser.yaml), so this is where we'd
+  # find out those binaries came from code that never actually ran on the
+  # platform it targets.
+  macos-check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: Build
+        run: go build -v .
+      - name: Install/uninstall cycle
+        run: scripts/smoke.sh
+      # Not a check -- captures real BSD --help/man text as CI log, the
+      # primary source for auditing rules.go's classic-tool assumptions
+      # (see data/MACOS-COMPAT-AUDIT.md, written against a FreeBSD-man-page
+      # proxy for lack of a better source before this job existed).
+      - name: Survey classic BSD tools
+        run: |
+          for t in grep sed find ps awk; do
+            echo "::group::$t --help"
+            "$t" --help 2>&1 || true
+            echo "::endgroup::"
+            echo "::group::man $t"
+            man "$t" 2>&1 | col -b || true
+            echo "::endgroup::"
+          done
+
   release:
+    needs: macos-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -8,9 +8,10 @@ kept distinct:
   without Darwin hardware. Apple's BSD userland (`grep`, `sed`, `find`,
   `ps`, `awk`) is historically forked from FreeBSD/NetBSD, so this is a
   reasonable proxy, not a guarantee of an exact match — the
-  `macos-classic-tool-survey` CI job (`.github/workflows/ci.yml`) exists to
-  replace this proxy with the real thing once it's run on an actual
-  `macos-latest` runner.
+  `macos-check` job's "Survey classic BSD tools" step
+  (`.github/workflows/release.yml`, runs once per tag, not on every push --
+  macos-latest bills at ~10x the Linux rate on a private repo) exists to
+  replace this proxy with the real thing the next time a release ships.
 - **Not yet checked** — named explicitly rather than silently skipped.
 
 ## Tool availability: settled
@@ -83,5 +84,4 @@ either tool's flags directly (`ps-grep-vs-pgrep` and `awk-awk` are both
 pipe-shape rules, tool-agnostic). BSD `ps`'s option syntax is known to
 differ meaningfully from Linux's (traditionally no leading dash), but
 nothing in the current rule set depends on that. Will get real coverage
-once `macos-classic-tool-survey` runs against an actual `macos-latest`
-runner — that requires a push, not done as part of this pass.
+the next time a `v*` tag triggers `release.yml`'s `macos-check` job.
