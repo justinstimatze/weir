@@ -23,9 +23,9 @@ var positives = []struct {
 	{`find . -name '*.py' -exec wc -l {} \;`, "find-exec-semi"},
 	{"sort file.txt | uniq", "sort-uniq"},
 	{"awk '{print $1}' file | awk '{print $2}'", "awk-awk"},
-	// OS-gated to darwin -- TestPositives forces goos for this one check.
-	// See TestRuleNegatives below for the same command confirmed NOT to
-	// fire under the ambient (linux, on CI) goos.
+	// OS-gated to darwin -- TestPositives forces goos to "darwin" for this
+	// one check. See TestRuleNegatives below for the same command
+	// confirmed NOT to fire on a different platform.
 	{"sed -i 's/x/y/' file.txt", "bsd-sed-i-mandatory-arg"},
 	{"python3 deploy/eval.py 2>/tmp/eval-stderr2.log; echo '---'; cat /tmp/eval-stderr2.log | grep -i error | head -10", "uuoc"},
 	{"which python3", "which-vs-command-v"},
@@ -369,11 +369,14 @@ var ruleNegatives = []struct {
 	{"sd 'PAT'\n" + `echo "literal text \` + `${VAR}here"`, "sd-replacement-shell-var"},
 	{"sd 'PAT'\n" + `echo "literal text \` + `${VAR}here"`, "sd-replacement-shell-var-no-capture-group"},
 
-	// bsd-sed-i-mandatory-arg is OS-gated to darwin. Run under the ambient
-	// goos (linux, on CI and this dev host) with no override, this is the
-	// same command the darwin-only positive fixture above uses -- correct
-	// GNU sed usage that must NOT be flagged here, confirming the gate
-	// itself works, not just the regex.
+	// bsd-sed-i-mandatory-arg is OS-gated to darwin. TestRuleNegatives
+	// forces goos to a DIFFERENT platform for this check ("linux",
+	// deterministically, not whatever the host running go test happens to
+	// be) -- the same command the darwin-only positive fixture above uses,
+	// correct GNU sed usage that must stay silent everywhere but darwin.
+	// Forcing rather than trusting the ambient goos is the fix for a real
+	// failure: macos-check runs this whole suite on actual Darwin, where
+	// "ambient" is darwin, not linux -- caught live on the first real run.
 	{"sed -i 's/x/y/' file.txt", "bsd-sed-i-mandatory-arg"},
 }
 
@@ -394,16 +397,23 @@ func contains(s []string, x string) bool {
 	return false
 }
 
-func TestPositives(t *testing.T) {
-	ruleOS := make(map[string]string, len(Rules))
+// ruleOS maps every rule name to its OS field, built once for the
+// fixture tests below to look up.
+func ruleOS() map[string]string {
+	m := make(map[string]string, len(Rules))
 	for _, r := range Rules {
-		ruleOS[r.Name] = r.OS
+		m[r.Name] = r.OS
 	}
+	return m
+}
+
+func TestPositives(t *testing.T) {
+	os := ruleOS()
 	for _, p := range positives {
 		// An OS-gated rule's fixture runs under that OS regardless of the
-		// host actually running the test -- see TestOSGatedRuleOnlyFiresOnItsOS
-		// for the negative half (it must NOT fire under a different goos).
-		restore := setGOOS(t, ruleOS[p.Want])
+		// host actually running the test -- see TestRuleNegatives for the
+		// negative half (it must NOT fire under a different goos).
+		restore := setGOOS(t, os[p.Want])
 		got := names(Match(p.Cmd))
 		restore()
 		if !contains(got, p.Want) {
@@ -424,6 +434,20 @@ func setGOOS(t *testing.T, os string) func() {
 	return func() { goos = old }
 }
 
+// otherOS returns a runtime.GOOS value guaranteed different from os, for
+// forcing an OS-gated rule's negative check onto a platform it must NOT
+// fire on -- deterministic regardless of which platform actually runs
+// go test. Caught live: macos-check runs this whole suite on real
+// Darwin, where the ambient goos genuinely IS "darwin" -- a fixture that
+// implicitly assumed "ambient means linux" asserted the wrong thing
+// there. 2026-09-08, first real macos-check run, before any tag existed.
+func otherOS(os string) string {
+	if os == "linux" {
+		return "darwin"
+	}
+	return "linux"
+}
+
 func TestNegatives(t *testing.T) {
 	for _, n := range negatives {
 		got := names(Match(n))
@@ -434,8 +458,16 @@ func TestNegatives(t *testing.T) {
 }
 
 func TestRuleNegatives(t *testing.T) {
+	os := ruleOS()
 	for _, n := range ruleNegatives {
+		var restore func()
+		if target := os[n.Rule]; target != "" {
+			restore = setGOOS(t, otherOS(target))
+		} else {
+			restore = func() {}
+		}
 		got := names(Match(n.Cmd))
+		restore()
 		if contains(got, n.Rule) {
 			t.Errorf("rule-negative: %q\n  expected %q NOT to fire; got %v", n.Cmd, n.Rule, got)
 		}
