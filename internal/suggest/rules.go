@@ -71,6 +71,16 @@ const (
 	shFile   = `(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)`
 	cmdPos   = `(?:^|[;&\n]\s*|&&\s*|\|\|\s*|\|\s*)`
 	redirGap = `(?:[^|\n;&]|&\d|&>){0,120}`
+	// argGap separates two positional arguments within the SAME statement
+	// (sd's PATTERN/REPLACEMENT/FILE). Go's \s includes \n, so the four
+	// sd-in-place-write* rules below used bare \s+ here and could match
+	// across a newline into an unrelated next statement: `sd 'PAT' ''`
+	// on one line followed by `echo something` on the next let \s+
+	// consume the newline and read `echo` as sd's FILE argument, firing
+	// sd-in-place-write-empty on a command that never wrote anything.
+	// Found 2026-09-08 auditing this project's own commands from a
+	// different session, not from a FIELD_REPORT.
+	argGap = `[ \t]+`
 )
 
 // Rules is the live antipattern set. Edits here are the rule table.
@@ -274,27 +284,27 @@ var Rules = []Rule{
 	// consumed `|` and `>` as positional arguments.
 	{
 		Name:     "sd-in-place-write",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+` + shWord + `\s+` + shFile + `(?:\s|$)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + shWord + argGap + shFile + `(?:\s|$)`),
 		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes to FILE IN PLACE — unlike sed, no `-i` is needed. `sd PAT REP FILE` overwrites FILE immediately. For a preview use `sd -p PAT REP FILE`; for stdout use `cat FILE | sd PAT REP`.",
 	},
 	{
 		Name:     "sd-in-place-write-secret-file",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+` + shWord + `\s+` + `[^\s|;&<>()]*(?:\.env\b|\.pem\b|credential|\.key\b|\.p12\b|\.pfx\b)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + shWord + argGap + `[^\s|;&<>()]*(?:\.env\b|\.pem\b|credential|\.key\b|\.p12\b|\.pfx\b)`),
 		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + you named a secret-ish file (.env, .pem, credentials, .key, .p12, .pfx). Overwriting the file destroys the real secret with the replacement string. If you meant to mask for DISPLAY, pipe to stdout: `cat FILE | sd PAT REP`. If you meant to persist, verify first with `sd -p PAT REP FILE`. Rewrite and retry.",
 		Action:   "block",
 	},
 	{
 		Name:     "sd-in-place-write-redaction",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+` + `(?:'[^']*` + redactionAlt + `[^']*'|"[^"]*` + redactionAlt + `[^"]*"|[^\s'"|;&<>()]*` + redactionAlt + `[^\s|;&<>()]*)` + `\s+` + shFile),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + `(?:'[^']*` + redactionAlt + `[^']*'|"[^"]*` + redactionAlt + `[^"]*"|[^\s'"|;&<>()]*` + redactionAlt + `[^\s|;&<>()]*)` + argGap + shFile),
 		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + the replacement looks like a redaction pattern (<set>, <redacted>, ***, REDACTED). Users typing redactions almost never want them persisted to disk — the shape says \"for display\". Pipe to stdout instead: `cat FILE | sd PAT REP` (safe, no write). Rewrite and retry.",
 		Action:   "block",
 	},
 	{
 		Name:     "sd-in-place-write-empty",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+(?:''|"")\s+` + shFile + `(?:\s|$)`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + `(?:''|"")` + argGap + shFile + `(?:\s|$)`),
 		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + the replacement is EMPTY, so this DELETES the matched text from FILE rather than substituting anything. Stripping a section to read what's left is a display job: pipe it — `cat FILE | sd PAT ''` (safe, no write). To persist a deletion, confirm with `sd -p PAT '' FILE` first, or use an editor. Rewrite and retry.",
 		Action:   "block",

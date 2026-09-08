@@ -241,6 +241,12 @@ var negatives = []string{
 	`cat notes.md | sd 'foo' 'bar' | head -20`,
 	`rg -n "sd-in-place-write" -A18 internal/suggest/rules.go`,
 	`WEIR_SAMPLE_RULE=sd-in-place-write go test ./internal/measure -v`,
+	// argGap regression. \s+ between positional args matched across a
+	// newline into the NEXT shell statement, reading its first word as
+	// sd's FILE operand -- \n"echo next" false-fired sd-in-place-write on
+	// a 2-arg piped sd that never wrote anything. Found 2026-09-08.
+	"rg 'x' file.html | sd '<[^>]+>' ''\necho next",
+	"sd 'PAT' 'REP'\ngit commit -m msg",
 	// pgrep/pkill negatives. A one-shot `pgrep -f` LOOK costs one extra
 	// line of output; only the loop/kill pairing is fatal. Name matching
 	// (no -f) cannot self-match at all.
