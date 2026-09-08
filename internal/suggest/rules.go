@@ -71,15 +71,20 @@ const (
 	shFile   = `(?:'[^']*'|"[^"]*"|[a-zA-Z0-9_./~][\w./~-]*)`
 	cmdPos   = `(?:^|[;&\n]\s*|&&\s*|\|\|\s*|\|\s*)`
 	redirGap = `(?:[^|\n;&]|&\d|&>){0,120}`
-	// argGap separates two positional arguments within the SAME statement
-	// (sd's PATTERN/REPLACEMENT/FILE). Go's \s includes \n, so the four
-	// sd-in-place-write* rules below used bare \s+ here and could match
-	// across a newline into an unrelated next statement: `sd 'PAT' ''`
-	// on one line followed by `echo something` on the next let \s+
-	// consume the newline and read `echo` as sd's FILE argument, firing
-	// sd-in-place-write-empty on a command that never wrote anything.
-	// Found 2026-09-08 auditing this project's own commands from a
-	// different session, not from a FIELD_REPORT.
+	// argGap is same-statement-only whitespace: the space before a flag, a
+	// file operand, or the next positional argument. Go's \s includes \n,
+	// so a rule using bare \s/\s+ in this position can match across a
+	// newline into an unrelated next statement: `sd 'PAT' ''` on one line
+	// followed by `echo something` on the next let \s+ consume the newline
+	// and read `echo` as sd's FILE argument, firing sd-in-place-write-empty
+	// on a command that never wrote anything. Found 2026-09-08, first in
+	// the four sd-in-place-write* rules, then swept across the rest of
+	// this file and found in twelve more (which-vs-command-v,
+	// git-add-all, both rg-r-misfire rules, pkill-f-self-match,
+	// rg-h-is-help, rg-cap-l-misfire, rg-ignore-file-hides-target,
+	// grep-dash-pattern, both sd-replacement-shell-var rules) -- every one
+	// confirmed to actually cross-match with a script, not assumed from
+	// the shape alone.
 	argGap = `[ \t]+`
 )
 
@@ -91,17 +96,17 @@ const (
 var Rules = []Rule{
 	{
 		Name:    "grep-head-trim",
-		Pattern: regexp.MustCompile(`\bgrep\b[^|]*\|\s*head\b`),
+		Pattern: regexp.MustCompile(`\bgrep\b[^|\n;&]*\|\s*head\b`),
 		Fix:     "`grep PATTERN FILE | head -n N` -> `grep -m N PATTERN FILE` (or `rg -m N` with rg installed). Stops at the source instead of relying on the pipe for early-exit. Caveat: `-m N` caps PER FILE, `| head -N` caps TOTAL across all files — they diverge on multi-file/recursive searches.",
 	},
 	{
 		Name:    "ls-grep",
-		Pattern: regexp.MustCompile(`\bls\b[^|]*\|\s*grep\b`),
+		Pattern: regexp.MustCompile(`\bls\b[^|\n;&]*\|\s*grep\b`),
 		Fix:     "`ls | grep PATTERN` -> use a glob (`ls *pattern*` or `*pattern*` directly) or `find -name PATTERN` / `fd PATTERN` for recursive. Skips ls's column formatting + the grep stage.",
 	},
 	{
 		Name:    "grep-wc",
-		Pattern: regexp.MustCompile(`\bgrep\b[^|]*\|\s*wc\s+-l\b`),
+		Pattern: regexp.MustCompile(`\bgrep\b[^|\n;&]*\|\s*wc\s+-l\b`),
 		Fix:     "`grep PATTERN | wc -l` -> `grep -c PATTERN` (or `rg -c PATTERN`). One process; works on streams too.",
 	},
 	{
@@ -121,20 +126,20 @@ var Rules = []Rule{
 	},
 	{
 		Name:    "find-exec-semi",
-		Pattern: regexp.MustCompile(`\bfind\b[^|]*-exec\s+[^+]+\\;`),
+		Pattern: regexp.MustCompile(`\bfind\b[^|\n;&]*-exec\s+[^+]+\\;`),
 		Fix:     "`find ... -exec CMD {} \\;` spawns one process per match. `-exec CMD {} +` batches — same semantics for grep/rm/chmod/wc/etc., far fewer execs.",
 	},
 	{
 		// Go's RE2 doesn't support lookaround, so we keep the negative check
 		// as a separate Suppress regex below.
 		Name:     "sort-uniq",
-		Pattern:  regexp.MustCompile(`\bsort\b[^|]*\|\s*uniq\b`),
+		Pattern:  regexp.MustCompile(`\bsort\b[^|\n;&]*\|\s*uniq\b`),
 		Suppress: regexp.MustCompile(`\buniq\s+-[a-zA-Z]*[cdu]\b`),
 		Fix:      "`sort | uniq` -> `sort -u` (one pass, no second process). Keep the pipeline when you need `uniq -c` (count), `-d` (only dupes), or `-u` (only uniques).",
 	},
 	{
 		Name:    "awk-awk",
-		Pattern: regexp.MustCompile(`\bawk\b[^|]*\|\s*awk\b`),
+		Pattern: regexp.MustCompile(`\bawk\b[^|\n;&]*\|\s*awk\b`),
 		Fix:     "Two awks in a row can usually fuse into one — the second awk's actions become a follow-up block in the first. Advisory only; the correct fusion depends on the awk code.",
 	},
 	// --- Promoted from data/mine_extra.py pass A (2026-05-20) ---------------
@@ -143,7 +148,7 @@ var Rules = []Rule{
 		// RE2 can't do "preceded by"; we anchor by including the separator in the
 		// match (consumes one char of context but selftests still verify behavior).
 		Name:    "which-vs-command-v",
-		Pattern: regexp.MustCompile(`(?:^|[;&\n]\s*|&&\s*|\|\|\s*|\|\s*)which\s+[A-Za-z_][\w.-]*`),
+		Pattern: regexp.MustCompile(cmdPos + `which` + argGap + `[A-Za-z_][\w.-]*`),
 		Fix:     "`which CMD` -> `command -v CMD`. `which` is non-POSIX with inconsistent cross-distro behavior — can't see shell functions/aliases, exit codes vary. `command -v` is POSIX, sees functions/aliases, exits non-zero cleanly when missing. Rewrite the command and retry.",
 		Action:  "block",
 	},
@@ -191,7 +196,7 @@ var Rules = []Rule{
 		// matching the dot in `foo.py` or `--all` inside a path; `\./?` matches a
 		// lone `.`/`./` but not `./foo` (an explicit path).
 		Name:    "git-add-all",
-		Pattern: regexp.MustCompile(`\bgit\s+add\b[^|\n;&]*?\s(?:-A|--all|\./?)(?:\s|$)`),
+		Pattern: regexp.MustCompile(`\bgit` + argGap + `add\b[^|\n;&]*?` + argGap + `(?:-A|--all|\./?)(?:\s|$)`),
 		Fix:     "`git add -A` / `--all` / `.` stage EVERY untracked file too — stray build artifacts, debug dumps, or secrets slip into the commit. Stage explicit paths instead: `git add path/to/file ...`, or `git add -u` to restage only already-tracked changes. Rewrite with the specific paths and retry.",
 		Action:  "block",
 	},
@@ -219,13 +224,13 @@ var Rules = []Rule{
 	// needed here.
 	{
 		Name:    "rg-r-misfire-bundled",
-		Pattern: regexp.MustCompile(`\brg\b[^|\n;&]*\s-r[nliwcv]\b`),
+		Pattern: regexp.MustCompile(`\brg\b[^|\n;&]*` + argGap + `-r[nliwcv]\b`),
 		Fix:     "`rg -r[X]` (bundled) sets `--replace=X`, not recursion — rg recurses by default. `rg -rn PATTERN path` (grep -rn muscle memory) parses as `--replace=n` and silently rewrites every match to the literal \"n\" with exit 0. A real single-letter replacement is written `-r n` (separated) or `--replace=n`; the bundle form is virtually always the muscle-memory trap. Rewrite as `rg -n PATTERN path` (drop the `-r`) and retry.",
 		Action:  "block",
 	},
 	{
 		Name:    "rg-r-misfire",
-		Pattern: regexp.MustCompile(`\brg\b[^|\n;&]*\s-r\s+(?:[nliwcv]\b|''|"")`),
+		Pattern: regexp.MustCompile(`\brg\b[^|\n;&]*` + argGap + `-r` + argGap + `(?:[nliwcv]\b|''|"")`),
 		Fix:     "`rg -r X` sets `--replace=X`, not recursion — rg recurses by default. `-r n` (or `-r ''` / `-r \"\"`) is a legitimate single-letter or empty-string replacement, but it's rare — the same shape shows up when someone reaches for grep-like recursion or trails a `-r` at the end of a command. Verify you meant to rewrite matches; if you're searching, drop the `-r` and use `rg -n PATTERN path`.",
 	},
 	// --- silent-corruption trap: sd writes IN PLACE by default ------------
@@ -363,7 +368,7 @@ var Rules = []Rule{
 	// contains an sd is not worth a second regex to distinguish.
 	{
 		Name:     "sd-replacement-shell-var",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + `(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
 		Suppress: regexp.MustCompile(`\(\?P?<[A-Za-z_]`),
 		Fix:      "sd's replacement string reads `$NAME` as a CAPTURE-GROUP reference, not a shell variable — and an unmatched reference expands to EMPTY rather than erroring, so the text silently disappears (`sd 'x' 'a$HERE/b'` emits `a/b`, exit 0; `sd 'x' \"a\\$HERE/b\"` — backslash-escaped inside double quotes — does the same). You will NOT see this fail: exit 0, no warning, and in source code the result is often still syntactically valid, just wrong (an import path missing its prefix, not a parse error). This is the opposite of sed, where single quotes make `$NAME` literal. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Numeric refs (`$1`) and named groups you actually defined are fine.",
 	},
@@ -392,7 +397,7 @@ var Rules = []Rule{
 	// plain — while `(?:` (the `?` right after `(`) and `()` fall through.
 	{
 		Name:     "sd-replacement-shell-var-no-capture-group",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + `\s` + shWord + `\s+(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + `(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
 		Suppress: regexp.MustCompile(`\((?:\?P?<[A-Za-z_]|[^?)])`),
 		Fix:      "sd's replacement references `$NAME`/`\\$NAME` and the search pattern defines NO capture group at all — not even a numbered one. There is no reading under which that reference resolves to anything but empty, so this refuses rather than advise: an unmatched capture-group reference silently deletes text, exit 0, and the result can be valid-looking source (a shortened import path, not a parse error) that nobody re-reads. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Rewrite and retry.",
 		Action:   "block",
@@ -421,13 +426,13 @@ var Rules = []Rule{
 	{
 		Name: "pgrep-f-self-match",
 		Pattern: regexp.MustCompile(
-			`\b(?:until|while)\b[^\n]*\bpgrep\b[^|\n;&]*\s(?:-[a-zA-Z]*f\b|--full\b)` +
-				`|\bpgrep\b[^|\n;&]*\s(?:-[a-zA-Z]*f\b|--full\b)[^\n]*\b(?:until|while|kill)\b`),
+			`\b(?:until|while)\b[^\n;&]*\bpgrep\b[^|\n;&]*` + argGap + `(?:-[a-zA-Z]*f\b|--full\b)` +
+				`|\bpgrep\b[^|\n;&]*` + argGap + `(?:-[a-zA-Z]*f\b|--full\b)[^\n;&]*\b(?:until|while|kill)\b`),
 		Fix: "`pgrep -f PATTERN` matches the FULL command line of every process, including the `bash -c` shell running THIS command — the pattern text is in its own cmdline. So `until ! pgrep -f foo; do sleep 10; done` matches itself and never exits, with no error and no output. Wait on a PID instead, which cannot match itself: `cmd & PID=$!` then `until ! kill -0 $PID 2>/dev/null; do sleep 10; done`. If you must use a pattern, match the process NAME (`pgrep foo`, no `-f`).",
 	},
 	{
 		Name:    "pkill-f-self-match",
-		Pattern: regexp.MustCompile(`\bpkill\b[^|\n;&]*\s(?:-[a-zA-Z]*f\b|--full\b)`),
+		Pattern: regexp.MustCompile(`\bpkill\b[^|\n;&]*` + argGap + `(?:-[a-zA-Z]*f\b|--full\b)`),
 		Fix:     "`pkill -f PATTERN` matches full command lines, and under Claude Code the `bash -c` shell running this command has the pattern text in its own cmdline — so this kills its own shell, usually before you learn whether it killed the target. Ungated, unlike the pgrep case: there is no safe one-shot form. Capture the PID when you start the job (`cmd & PID=$!`) and `kill $PID`, or match the process NAME with `pkill foo` (no `-f`).",
 	},
 	// --- silent-corruption trap: rg's -h is --help ------------------------
@@ -447,7 +452,7 @@ var Rules = []Rule{
 	// by something that looks like a pattern or a path.
 	{
 		Name:    "rg-h-is-help",
-		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*\s(?:-[a-z]*h[a-z]+\b|-[a-z]+h[a-z]*\b|-h\s+['"a-zA-Z_./~])`),
+		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*` + argGap + `(?:-[a-z]*h[a-z]+\b|-[a-z]+h[a-z]*\b|-h` + argGap + `['"a-zA-Z_./~])`),
 		Fix:     "In rg, `-h` is `--help`, NOT `--no-filename` — that is `-I` or `-N`. `rg -oh PAT files` prints the usage text on stdout with exit 0; the pattern and file list are never read, and piped into `sort`/`head` it reads as a clean result set that happens to contain no matches. Use `rg -o -N PAT files` (or `-I`). `-o` alone is enough for a single file.",
 	},
 	// --- silent-scope trap: grep -L's meaning does not survive to rg ------
@@ -471,7 +476,7 @@ var Rules = []Rule{
 	// tell the two intentions apart from the command text alone.
 	{
 		Name:    "rg-cap-l-misfire",
-		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*\s-[A-Za-z]*L[A-Za-z]*\b`),
+		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*` + argGap + `-[A-Za-z]*L[A-Za-z]*\b`),
 		Fix:     "In rg, `-L` is `--follow` (follow symlinks), NOT `--files-without-match` — that grep flag has no short form in rg at all. `rg -L PATTERN dir` runs clean and lists files that DO match, the opposite of what -L selects in grep. If you want files lacking a match, use `rg --files-without-match PATTERN dir`. If you meant to follow symlinks, this is a false alarm — carry on.",
 	},
 	// --- silent-scope trap: an ignore file governs search, not just git ---
@@ -502,8 +507,8 @@ var Rules = []Rule{
 	// tax; one that fires on 0.33% is a tripwire.
 	{
 		Name:     "rg-ignore-file-hides-target",
-		Pattern:  regexp.MustCompile(cmdPos + `(?:rg|fd|fdfind)\b[^|\n;&]*\s` + dotPath),
-		Suppress: regexp.MustCompile(`--no-ignore\b|--unrestricted\b|\s-[a-zA-Z]*[uI][a-zA-Z]*(?:\s|$)|` + dotFileArg),
+		Pattern:  regexp.MustCompile(cmdPos + `(?:rg|fd|fdfind)\b[^|\n;&]*` + argGap + dotPath),
+		Suppress: regexp.MustCompile(`--no-ignore\b|--unrestricted\b|` + argGap + `-[a-zA-Z]*[uI][a-zA-Z]*(?:\s|$)|` + dotFileArg),
 		Fix:      "rg and fd honour `.gitignore` even when no git command is involved, so a deny-by-default ignore file makes a whole tree return zero matches with exit 1 — indistinguishable from \"the string is not there.\" `--hidden` does NOT fix this; the flag is `--no-ignore` (`-uu` for rg, `-HI` for fd, which covers both halves). `~/.claude` is deny-by-default on this host, so any search under it needs `-uu`. Confirm what is being skipped with `rg --debug ... 2>&1 | rg ignoring`.",
 	},
 	// --- silent-status trap: a pipeline reports its LAST stage's status ---
@@ -620,8 +625,8 @@ var Rules = []Rule{
 	// and should: it fails identically and takes the same `--` fix.
 	{
 		Name:     "grep-dash-pattern",
-		Pattern:  regexp.MustCompile(cmdPos + `grep\b[^|\n;&]*\s(?:'-[^']*'|"-[^"]*")`),
-		Suppress: regexp.MustCompile(`\bgrep\b[^|\n;&]*\s(?:--\s|-e\b|--regexp\b)`),
+		Pattern:  regexp.MustCompile(cmdPos + `grep\b[^|\n;&]*` + argGap + `(?:'-[^']*'|"-[^"]*")`),
+		Suppress: regexp.MustCompile(`\bgrep\b[^|\n;&]*` + argGap + `(?:--\s|-e\b|--regexp\b)`),
 		Fix:      "An operand starting with `-` is parsed as an OPTION, not as your pattern or filename. Two outcomes, and the second is the dangerous one: `grep -E '--- FAIL' f` exits 2 with a usage error, while `grep -E '-v' f` exits 1 with NO message at all — `-v` is a valid flag, so grep quietly inverts the match instead of searching for the literal text. Markdown list items, diff lines, arrows, and flag names all start with `-`. Pass `--` first: `grep -- \"$PATTERN\" FILE`, or name it with `-e \"$PATTERN\"`.",
 	},
 }

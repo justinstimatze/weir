@@ -339,6 +339,31 @@ var ruleNegatives = []struct {
 	// A dot-path with an unrestricted flag present is handled, but the
 	// in-place sd rules must not read a search path as a file operand.
 	{`rg 'marker' ~/.claude/projects`, "sd-in-place-write"},
+
+	// argGap sweep, 2026-09-08: same bug class as the four sd-in-place-write*
+	// fixtures above, found by grepping the rest of rules.go for bare \s/\s+
+	// and \n-unbounded [^|]* gaps, then confirming each one actually
+	// cross-matches before fixing it. Every entry below is a real, one-line
+	// legitimate statement followed by an unrelated next statement that
+	// must NOT be read as part of the first.
+	{"grep foo bar.txt\nls | head -5", "grep-head-trim"},
+	{"ls -la\ncat notes | grep TODO", "ls-grep"},
+	{"grep foo bar.txt\ncat notes | wc -l", "grep-wc"},
+	{`find . -name x.txt` + "\n" + `other -exec rm {} \;`, "find-exec-semi"},
+	{"sort file.txt\ncat other | uniq", "sort-uniq"},
+	{"awk '{print}' f\ncat other | awk '{print $1}'", "awk-awk"},
+	{"which\nrm -rf tmp", "which-vs-command-v"},
+	{"git add file1.go file2.go\n-A leftover token", "git-add-all"},
+	{"rg pattern file.txt\n-rn other-context", "rg-r-misfire-bundled"},
+	{"rg pattern file.txt\n-r n leftover", "rg-r-misfire"},
+	{"pkill myproc\n-f leftover", "pkill-f-self-match"},
+	{"rg pattern file.txt\n-h 'leftover'", "rg-h-is-help"},
+	{"rg pattern file.txt\n-L leftover", "rg-cap-l-misfire"},
+	{"pgrep -f myproc; kill 99999", "pgrep-f-self-match"},
+	{"grep foo bar.txt\n'-x other quoted' file", "grep-dash-pattern"},
+	{"rg pattern file.txt\n~/.claude/projects leftover", "rg-ignore-file-hides-target"},
+	{"sd 'PAT'\n" + `echo "literal text \` + `${VAR}here"`, "sd-replacement-shell-var"},
+	{"sd 'PAT'\n" + `echo "literal text \` + `${VAR}here"`, "sd-replacement-shell-var-no-capture-group"},
 }
 
 func names(rs []Rule) []string {
