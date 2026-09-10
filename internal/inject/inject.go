@@ -31,6 +31,7 @@ import (
 	"github.com/justinstimatze/weir/internal/guard"
 	"github.com/justinstimatze/weir/internal/idioms"
 	"github.com/justinstimatze/weir/internal/probe"
+	"github.com/justinstimatze/weir/internal/rulehistory"
 )
 
 // IdiomBudgetChars caps the bytes spent on the idiom block. ~2000 chars
@@ -65,7 +66,11 @@ const GotchaBudgetChars = 3000
 
 // Render builds the additionalContext string from the probe manifest +
 // the embedded idiom corpus. Doesn't perform I/O — easy to test.
-func Render(m probe.Manifest, c *idioms.Corpus) string {
+//
+// hist and mode control gotcha muting (see renderGotchas): hist is this
+// project's rule-fire history from internal/rulehistory, mode is the
+// resolved WEIR_GOTCHAS value ("always"/"never"/"auto").
+func Render(m probe.Manifest, c *idioms.Corpus, hist rulehistory.Status, mode string) string {
 	var b strings.Builder
 	renames := renameMap(m.Present)
 
@@ -116,7 +121,7 @@ func Render(m probe.Manifest, c *idioms.Corpus) string {
 	}
 
 	// --- silent-failure gotchas (present-tool filtered) ---
-	if gotchas := renderGotchas(m.Present, renames); gotchas != "" {
+	if gotchas := renderGotchas(m.Present, renames, hist, mode); gotchas != "" {
 		b.WriteString("\n\n[weir] Silent-failure gotchas (classic-tool habits that fail QUIET in the replacement — success with corrupted output, not a loud error):\n")
 		b.WriteString(gotchas)
 	}
@@ -353,14 +358,37 @@ var gotchas = []gotcha{
 	},
 }
 
-func renderGotchas(present []probe.Entry, renames map[string]string) string {
+// muteGotcha decides, under "auto" mode, whether g's SessionStart priming
+// copy should be suppressed: only when its matching suggest.Rule has never
+// fired in this project's own history AND that history has cleared
+// rulehistory.MinEvidenceBashCalls. g.Rule == "" (command-not-found — not
+// regex-detectable) is never muted, since no signal exists to mute it on.
+// This never touches the live PreToolUse rule itself, which fires
+// regardless of anything here.
+func muteGotcha(g gotcha, hist rulehistory.Status, mode string) bool {
+	switch mode {
+	case "always":
+		return false
+	case "never":
+		return g.Rule != ""
+	default: // "auto"
+		return g.Rule != "" && hist.Evidence && hist.Fired[g.Rule] == 0
+	}
+}
+
+func renderGotchas(present []probe.Entry, renames map[string]string, hist rulehistory.Status, mode string) string {
 	have := make(map[string]bool, len(present))
 	for _, e := range present {
 		have[e.Name] = true
 	}
 	var lines []string
+	muted := 0
 	for _, g := range gotchas {
 		if g.Tool != "" && !have[g.Tool] {
+			continue
+		}
+		if muteGotcha(g, hist, mode) {
+			muted++
 			continue
 		}
 		lines = append(lines, "- "+renameGotchaLine(g, renames))
@@ -380,6 +408,15 @@ func renderGotchas(present []probe.Entry, renames map[string]string) string {
 	}
 	if truncated {
 		b.WriteString("\n- (gotcha list truncated to fit budget; see the `gotchas` var in internal/inject/inject.go, and the matching rule's Fix text in internal/suggest/rules.go, for the rest)")
+	}
+	// Muting must never be silent: a suppressed gotcha still leaves a
+	// one-line trace so a session reading this output can notice and
+	// override it, mirroring the truncation marker above.
+	if muted > 0 {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "- (%d gotcha(s) muted: matching rule has never fired in this project's history; WEIR_GOTCHAS=always shows everything for one session)", muted)
 	}
 	return b.String()
 }
@@ -471,13 +508,45 @@ func CmdInject(args []string, in io.Reader, stdout io.Writer) int {
 	return guard.Hook("inject", func() int { return cmdInjectInner(args, in, stdout) })
 }
 
-func cmdInjectInner(_ []string, _ io.Reader, stdout io.Writer) int {
+// sessionStartInput is the subset of Claude Code's SessionStart hook stdin
+// this cares about. Best-effort only: a decode failure or an empty/missing
+// field is not an error here (unlike suggest's stricter hookInput decode) —
+// inject's whole job is to render regardless of whether project identity
+// resolves, so an undecodable payload just falls through to
+// rulehistory.Load("", "") -> Status{Evidence:false} -> every gotcha shown.
+type sessionStartInput struct {
+	TranscriptPath string `json:"transcript_path"`
+	CWD            string `json:"cwd"`
+}
+
+// gotchaMode resolves WEIR_GOTCHAS to one of "always"/"never"/"auto".
+// Unset or unrecognized falls to "auto" rather than erroring, so a typo
+// fails toward full display, never toward silent suppression.
+func gotchaMode() string {
+	switch os.Getenv("WEIR_GOTCHAS") {
+	case "always":
+		return "always"
+	case "never":
+		return "never"
+	default:
+		return "auto"
+	}
+}
+
+func cmdInjectInner(_ []string, in io.Reader, stdout io.Writer) int {
 	if os.Getenv("WEIR_SKIP") != "" {
 		return 0
 	}
+	var si sessionStartInput
+	_ = json.NewDecoder(in).Decode(&si) // best-effort; zero value on any failure is fine
+	mode := gotchaMode()
+	var hist rulehistory.Status
+	if mode == "auto" {
+		hist = rulehistory.Load(si.TranscriptPath, si.CWD)
+	}
 	m := probe.Run()
 	corpus, _ := idioms.Load() // OK if nil — Render handles it
-	ctx := Render(m, corpus)
+	ctx := Render(m, corpus, hist, mode)
 	if ctx == "" {
 		return 0
 	}

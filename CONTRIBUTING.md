@@ -87,6 +87,14 @@ Every gotcha describing a destructive habit needs a `Rule` field naming the `int
 
 `GotchaBudgetChars` caps the section the same way `IdiomBudgetChars`/`CompositionBudgetChars` cap theirs — belt-and-suspenders against the table growing unbounded again, since it once did.
 
+### Gotcha muting (`WEIR_GOTCHAS`)
+
+A 2026-09 measurement scoped weir's own antipattern-fire-rate sweep to 85 individual projects instead of the host-wide corpus: rule-fire density ranged from 1.3% to 20.7% of Bash calls — project *type* genuinely predicts whether these rules ever matter. `internal/rulehistory` acts on that: at `SessionStart`, a rule-gated gotcha is muted from the injected block if its matching `suggest.Rule` has never fired anywhere in that specific project's own transcript history (once that history clears `rulehistory.MinEvidenceBashCalls`, currently 200 calls — below that bar everything shows, unconditionally). This never touches the live `PreToolUse` rule itself, which keeps firing regardless; only the SessionStart *reminder* copy is ever muted.
+
+Deliberately not a percentage threshold: a rule a project hits once a year needs the reminder as much as one it hits weekly, arguably more (less practiced caution around it), so muting gates on "has this ever happened here at all," never on frequency. The mechanism is entirely local per installation — every user's own transcripts drive their own outcome, with nothing borrowed from any other project's history.
+
+`WEIR_GOTCHAS` overrides the computed decision: `always` shows every gotcha (skips the history lookup entirely), `never` mutes every rule-gated gotcha regardless of history, unset/anything else is `auto`. Muting is never silent — a rendered block with anything muted always carries a one-line count and points at the override. The cache lives at `<os.UserCacheDir()>/weir/projects/<name>.json`, invalidates itself automatically when `rules.go` changes (`suggest.RuleSetFingerprint()`), and fails open on any error — a missing or corrupt cache means every gotcha renders, never that something silently vanishes.
+
 ## Adding a composition idiom
 
 Cross-tool idioms live in [`internal/idioms/composition.json`](internal/idioms/composition.json) as `{intent, cmd, tools}` entries. `tools` is the list of binaries that must be present on the host for the idiom to surface. The idiom is filtered into the SessionStart block by `inject.go` based on the live probe.
