@@ -58,14 +58,15 @@ $ which python3
 (To bypass this block for the rest of the session, set WEIR_SUGGEST_SKIP=1 in the env.)
 ```
 
-### Layer 3 — Idiom library (SessionStart, additive)
+### Layer 3 — Idiom library + gotchas (SessionStart, additive)
 
-After the manifest, weir injects two more blocks:
+After the manifest, weir injects three more blocks:
 
 1. **Per-tool idioms** from a parsed tldr-pages corpus — the first 2 examples per installed modern tool.
 2. **Composition idioms** — 30 hand-curated goal-shaped pipelines (find files modified today and grep them; pretty-print every JSON in a tree; benchmark two command variants). Filtered to entries whose required tools are all present on the host; capped at 10 surfaced per session.
+3. **Silent-failure gotchas** — classic-tool habits that fail *quiet* in the modern replacement (`rg -r` silently rewriting matches instead of recursing; `sd` writing in place with no `-i`; a pipe's exit status being the last stage's, not the command that actually failed). Each entry is terse by design — mechanism, one failure shape, the fix — because the full incident-level detail lives in the matching layer-2 rule's `Fix` text instead, paid for only on the turn the risky command is actually typed. A gotcha drops out of this list once a project's own Bash history clears a minimum volume of calls and shows its matching rule has never fired there; the layer-2 rule itself keeps firing regardless. `WEIR_GOTCHAS=always`/`never`/`auto` overrides the computed choice, and a muted entry always leaves a one-line count behind rather than vanishing silently.
 
-Layer 3 teaches "*how* to compose"; layer 1 teaches "*what's* installed."
+Layer 3 teaches "*how* to compose" and "*what to watch for*"; layer 1 teaches "*what's* installed."
 
 ## Install
 
@@ -108,7 +109,7 @@ it heavily:
 | command | what it does |
 |---|---|
 | `weir suggest` | PreToolUse hook entry point — reads JSON on stdin, emits suggestion JSON |
-| `weir inject` | SessionStart hook entry point — renders manifest + idioms |
+| `weir inject` | SessionStart hook entry point — renders manifest + idioms + gotchas |
 | `weir probe` | emit the capability manifest JSON for the current host |
 | `weir install` | register weir's hooks; idempotent; backs up settings first |
 | `weir uninstall` | remove weir's hooks; leaves unrelated hooks untouched |
@@ -119,10 +120,11 @@ it heavily:
 
 ## How weir avoids being annoying
 
+- **This isn't valuable for every project, and that's measured, not a guess.** Rule-fire density (how often a project's own Bash history ever touches a hazard weir warns about) ranged from 1.3% to 20.7% across 85 real projects — a project that's mostly `git`/`npm`/`docker`/test-runner invocations will rarely if ever hit what weir is for, while one built around `rg`/`sd`/`fd`/pipelines will hit it constantly. Layer 3's gotcha muting adapts to this per project, but only for the gotcha section specifically — the manifest and idiom blocks still render regardless of density. If none of it earns its keep on a given project, `WEIR_SKIP=1` turns SessionStart injection off entirely.
 - **Fail-open everywhere.** Any error in the hook → silent exit 0, command runs. weir cannot break your session.
 - **Block mode is conservative.** Only on rewrites where the substitution is mechanically lossless. Edge-case rules stay advisory.
-- **Bypass is one env var.** `WEIR_SUGGEST_SKIP=1` disables suggest output for the session; `WEIR_SKIP=1` disables the SessionStart inject.
-- **Suggestions are concise.** Rule fix-text is one paragraph max. SessionStart injection is bounded: the per-tool tldr idiom section caps at 2000 chars (~500 tokens), the cross-tool composition section caps at 1500 chars (~375 tokens), and the manifest itself scales with installed-tool count. Worst-case total on a richly-stocked host is ~1000 tokens.
+- **Bypass is one env var per layer.** `WEIR_SUGGEST_SKIP=1` disables suggest output for the session; `WEIR_SKIP=1` disables the SessionStart inject entirely; `WEIR_GOTCHAS=always`/`never` overrides just the gotcha-muting decision without touching either of the other two.
+- **Suggestions are concise.** Rule fix-text is one paragraph max. SessionStart injection is bounded: the per-tool tldr idiom section caps at 2000 chars (~500 tokens), the cross-tool composition section caps at 1500 chars (~375 tokens), the gotcha section caps at 3000 chars (~750 tokens) and shrinks further per-project via the muting above, and the manifest itself scales with installed-tool count. Worst case with every budget maxed is under 2000 tokens.
 - **Settings.json edits are non-destructive + reversible.** Every write backs up first to `<path>.weir-bak-<timestamp>`; uninstall removes only weir-owned entries.
 
 ## Architecture
@@ -134,10 +136,11 @@ main.go                        # subcommand dispatch + --version
 internal/
   probe/                       # PATH discovery + apt-pkg mapping (+ symlink dedup)
   suggest/                     # rule table + match engine + selftest + review
-  inject/                      # SessionStart prose renderer (manifest + idioms + composition)
+  inject/                      # SessionStart prose renderer (manifest + idioms + composition + gotchas)
   idioms/                      # per-tool (tldr) + composition idioms; build-idioms parser
   install/                     # non-destructive settings.json merge + status + uninstall
   measure/                     # corpus streamer + baseline diff (embedded baseline.json)
+  rulehistory/                 # per-project rule-fire history cache; gates gotcha muting
   guard/                       # panic-recover wrapper for all hook entry points
 data/
   baseline_2026-05-20.json     # sanitized aggregate baseline (the empirical evidence)

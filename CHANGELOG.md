@@ -2,6 +2,19 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.11 — 2026-09-10
+
+Scoped weir's own rule-fire sweep to individual projects instead of the host-wide corpus: density ranged 1.3%–20.7% of Bash calls across 85 real projects, median 6.3%. Project type genuinely predicts whether the gotcha section's hazards ever come up — the SessionStart cost was being paid identically regardless.
+
+### Added
+- **Gotcha muting.** A rule-gated gotcha is dropped from the SessionStart block when its matching `suggest.Rule` has never fired anywhere in that project's own transcript history, once that history clears 200 Bash calls (below the bar, or on any failure, everything shows — fail open, never fail closed). The live `PreToolUse` rule is unaffected; only the SessionStart *reminder* copy is ever muted. `internal/rulehistory` (new package) is the first persistent, weir-owned, cross-invocation cache weir has needed — `<os.UserCacheDir()>/weir/projects/<name>.json`, self-invalidating on a `suggest.RuleSetFingerprint()` mismatch so a rule-pattern edit can't leave stale "never fired" data around.
+- **`WEIR_GOTCHAS=always`/`never`/`auto`** overrides the computed decision, checked before any cache I/O. Muting is never silent: a rendered block with anything muted carries a one-line count naming the override.
+
+Validated against the real shipped code path across the whole account's project fleet, not just weir's own repo: of 95 projects with ≥20 Bash calls, 34 clear the evidence bar. `trig`/`sluice` mute 10 of 11 gotchas (2,658 → 732 bytes, a 72% cut to the section); `lexicon`, the densest project at 41,086 Bash calls, mutes only 1 (2,658 → 2,634 bytes) because a project that heavily exercised has already hit almost every hazard at least once. Aggregate across the fleet: 252,510 → 183,547 gotcha-section bytes, a 27.3% reduction, recurring every session after the first.
+
+### Docs
+- README now covers the gotcha layer and `WEIR_GOTCHAS` (previously undocumented outside `CONTRIBUTING.md`), states plainly that SessionStart's value scales with how much raw shell work a project actually does, and lists `internal/rulehistory/` in the architecture tree.
+
 ## v0.1.10 — 2026-09-08
 
 ### Added
