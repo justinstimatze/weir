@@ -23,6 +23,8 @@ Three layers, registered as Claude Code hooks. All fail-open; bypass with `WEIR_
 
 At the start of every session, weir probes `$PATH` for ~30 modern shell tools, emits a JSON manifest, and injects it into the model's context as `additionalContext`. The model now knows what's reachable on *this* host instead of defaulting to coreutils.
 
+`sd` is deliberately not in this catalog. It was recommended over `sed` through v0.1.11, but three field-reported sightings of the same replacement-string footgun — the third one a detection bug in the block rule meant to have already closed it — settled the question: the failure mode recurs faster than the rule table can be hardened against it. weir stops endorsing it; `internal/suggest`'s six sd-specific rules stay fully active as a backstop, since a model can still reach for `sd` from its own training knowledge regardless of what weir recommends.
+
 Sample output on a freshly-stocked Ubuntu 26.04:
 
 ```
@@ -33,7 +35,6 @@ Sample output on a freshly-stocked Ubuntu 26.04:
 - jq (additive) -> /usr/bin/jq
 - mlr (prefer over awk) -> /usr/bin/mlr
 - rg (prefer over grep) -> /usr/bin/rg
-- sd (prefer over sed) -> /usr/bin/sd
 ...
 ```
 

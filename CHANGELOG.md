@@ -2,6 +2,47 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## v0.1.12 — 2026-09-14
+
+Third field-reported sighting of the `sd` replacement-var footgun, from aipotluck.org: the block
+escalation shipped in v0.1.8 to close this had a detection bug of its own, and the corruption
+landed anyway — this time silently manufacturing a green test report for a check that had never
+run, a damage class neither of the first two sightings covered.
+
+### Fixed
+- **`sd-replacement-shell-var-no-capture-group` no longer disarms on an unrelated `(` anywhere
+  else in a compound Bash command.** Its "no real capture group" check used to be a whole-command
+  `Suppress` regex — exactly right read against one bare `sd` invocation, exactly wrong read
+  against the compound calls Claude Code writes by default. A subshell, a command substitution, a
+  quoted paren in an `echo`, or a heredoc body carrying Python/JS/jq was enough to false-suppress
+  the block. Reproduced live: prepending `(cd /tmp); `, `echo 'a(b'; `, or `true $(date); ` to an
+  otherwise-blocked `sd` call all demoted it to advisory. Fixed by moving the check into the
+  `Pattern` itself (new `noGroupWord` fragment, `rules.go`), scoped to the `sd` call's own
+  search-pattern argument — an argument containing a real capturing paren now simply fails to
+  match that argument slot, with no dependency on what else sits elsewhere in the command. No
+  `Suppress` field needed anymore. 32 fires / 0.014% of a 227k-call corpus post-fix, spans read as
+  real hazards.
+  - One known residual imprecision, found while sweeping the corpus rather than assumed away: an
+    sd invocation using `--` to end its flags (common when the search pattern itself starts with
+    `-`) can have `--` itself misread as "the search-pattern argument," which shifts the *real*
+    search pattern into the slot the rule reads as "the replacement" — if that real pattern
+    happens to also contain an escaped `$NAME`-shaped sequence, the rule fires with an inaccurate
+    stated reason (claiming no capture group exists when one does). Confirmed against a real
+    corpus specimen: the block still landed on the right side, because the invocation's actual
+    replacement separately referenced two undefined names — the reasoning that produced that
+    verdict for this particular shape happened to be coincidental. Not fixed here: it needs real
+    positional-argument tracking, a bigger change than this pass's scope.
+
+### Changed
+- **`sd` dropped from the recommended-tools manifest.** Three sightings of the same footgun class,
+  the third one a bug in the fix for the second, settled it: the failure mode recurs faster than
+  the rule table can be hardened against it. `internal/probe`'s catalog no longer lists `sd`, so
+  it never appears in the "prefer X over Y" manifest or gets recommended via tldr idioms. The two
+  `sd`-specific SessionStart gotchas are un-gated (`Tool: ""`) rather than removed, so the warning
+  still surfaces even without the endorsement — a model can reach for `sd` from its own training
+  knowledge regardless of what weir recommends. All six `sd-*` `suggest` rules are untouched and
+  fully active — the backstop stays exactly as it was; the positive recommendation is what's gone.
+
 ## v0.1.11 — 2026-09-10
 
 Scoped weir's own rule-fire sweep to individual projects instead of the host-wide corpus: density ranged 1.3%–20.7% of Bash calls across 85 real projects, median 6.3%. Project type genuinely predicts whether the gotcha section's hazards ever come up — the SessionStart cost was being paid identically regardless.

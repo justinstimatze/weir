@@ -90,6 +90,24 @@ const (
 	// confirmed to actually cross-match with a script, not assumed from
 	// the shape alone.
 	argGap = `[ \t]+`
+	// noGroupWord matches a quoted (or bare) argument that contains NO
+	// unescaped capturing-group paren anywhere in its own text — `(?:...)`
+	// non-capturing groups are still allowed, since they carry no
+	// evidentiary weight about whether the author knows the group syntax
+	// exists. Built as a per-character run of "not a paren, OR the exact
+	// two-char sequence `(?:`" — a real `(` that ISN'T `(?:` breaks the
+	// run, which fails the whole quoted-argument match, not just a
+	// sub-check against it. That's what makes this safe to use directly
+	// as a Pattern fragment instead of a separate whole-command Suppress:
+	// the "no capture group" condition is now a property of the argument
+	// span itself, immune to an unrelated `(` anywhere else in a compound
+	// Bash command (a subshell, a command substitution, a quoted `(` in
+	// an echo, a heredoc body). Bare unquoted tokens need no extra work —
+	// shWord's own bare-token alternative already excludes `(`/`)`
+	// outright, so it can never contain a group to begin with.
+	// See sd-replacement-shell-var-no-capture-group's doc comment for the
+	// incident this fixes.
+	noGroupWord = `(?:'(?:[^'(]|\(\?:)*'|"(?:[^"(]|\(\?:)*"|[^\s'"|;&<>()][^\s|;&<>()]*)`
 )
 
 // Rules is the live antipattern set. Edits here are the rule table.
@@ -389,22 +407,43 @@ var Rules = []Rule{
 	// class already excludes by construction (digits never match
 	// `[A-Za-z_]`), but a plain group's mere PRESENCE says the author
 	// knows capture-group syntax, same evidentiary weight as a named one —
-	// so it's folded into this rule's Suppress too, not the base rule's.
+	// so it's folded into this rule too, not the base rule's.
 	//
-	// Fires only when the base pattern matches AND the whole command
+	// Fires only when the sd invocation's own search-pattern argument
 	// defines no capture group of ANY kind — no named group, no plain
 	// `(...)`, only `(?:...)` (non-capturing) allowed. In that state
 	// `$NAME` cannot resolve under any reading; there is nothing to weigh
-	// against blocking. `\((?:\?P?<[A-Za-z_]|[^?)])` matches an opening
-	// paren immediately followed by either a named-group opener or any
-	// character that isn't `?`/`)` — i.e. any capturing form, named or
-	// plain — while `(?:` (the `?` right after `(`) and `()` fall through.
+	// against blocking.
+	//
+	// Third sighting, 2026-09-13 from aipotluck.org: this used to be a
+	// whole-command Suppress (`\((?:\?P?<[A-Za-z_]|[^?)])` matched against
+	// the full cmd string), which is exactly right read against one bare
+	// sd invocation and exactly wrong read against a compound Bash call —
+	// Claude Code's Bash calls are compound by default, and ANY unrelated
+	// `(` anywhere in the command (a subshell, a command substitution, a
+	// quoted paren in an echo, a heredoc body carrying Python/JS/jq) was
+	// enough to falsely suppress the block. Reproduced live: prepending
+	// `(cd /tmp); `, `echo 'a(b'; `, or `true $(date); ` to an otherwise-
+	// blocked sd call all demoted it to advisory. The corruption that
+	// slipped through corrupted a gate-verification script's own $PY
+	// variable, which made a broken type-check harness print PASS on 5 of
+	// 6 rows for a check that had never actually run — a damage class
+	// neither of the first two sightings covered: not a visibly-wrong
+	// file, not a deferred-to-build-time error, but a fabricated GREEN
+	// result for an unrelated safety mechanism.
+	//
+	// Fixed by moving the "no real capture group" condition into the
+	// Pattern itself, scoped to the search-pattern argument's own span via
+	// noGroupWord (defined above), instead of a separate whole-command
+	// Suppress. No Suppress field needed anymore — an argument containing
+	// a real capturing paren simply fails to match noGroupWord at all, so
+	// the whole rule doesn't fire, with no dependency on what else is
+	// sitting elsewhere in the command.
 	{
-		Name:     "sd-replacement-shell-var-no-capture-group",
-		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + `(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
-		Suppress: regexp.MustCompile(`\((?:\?P?<[A-Za-z_]|[^?)])`),
-		Fix:      "sd's replacement references `$NAME`/`\\$NAME` and the search pattern defines NO capture group at all — not even a numbered one. There is no reading under which that reference resolves to anything but empty, so this refuses rather than advise: an unmatched capture-group reference silently deletes text, exit 0, and the result can be valid-looking source (a shortened import path, not a parse error) that nobody re-reads. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Rewrite and retry.",
-		Action:   "block",
+		Name:    "sd-replacement-shell-var-no-capture-group",
+		Pattern: regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + noGroupWord + argGap + `(?:'(?:[^'$]|\$\$)*\$\{?[A-Za-z_][^']*'|"[^"]*\\\$\{?[A-Za-z_][^"]*")`),
+		Fix:     "sd's replacement references `$NAME`/`\\$NAME` and the search pattern defines NO capture group at all — not even a numbered one. There is no reading under which that reference resolves to anything but empty, so this refuses rather than advise: an unmatched capture-group reference silently deletes text, exit 0, and the result can be valid-looking source (a shortened import path, not a parse error) that nobody re-reads. For a literal `$`, double it: `$$NAME`. To interpolate a shell variable, use double quotes with NO backslash and let the shell expand it before sd sees it. Rewrite and retry.",
+		Action:  "block",
 	},
 	// --- silent-corruption trap: BSD sed's -i takes a MANDATORY, glued
 	// argument, unlike GNU's optional one --------------------------------

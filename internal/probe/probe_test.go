@@ -36,6 +36,33 @@ func TestRunIncludesTrackedTools(t *testing.T) {
 	}
 }
 
+// TestSDNotRecommended — sd was dropped from the catalog 2026-09-13 after
+// three field-reported sightings of the same replacement-var footgun, the
+// third of which was a detection bug in weir's own block escalation. weir
+// still defends against sd via internal/suggest's six sd-* rules (those run
+// independent of this catalog, straight off the raw command text), but it
+// no longer actively recommends sd as a sed replacement. Pinned here as a
+// real, deliberate test rather than something that could silently regress
+// back via a future edit that "helpfully" re-adds it.
+func TestSDNotRecommended(t *testing.T) {
+	for _, t2 := range catalog {
+		if t2.name == "sd" {
+			t.Error("sd should not be in the catalog — dropped 2026-09-13, see CHANGELOG.md")
+		}
+	}
+	m := Run()
+	for _, e := range m.Present {
+		if e.Name == "sd" {
+			t.Error("sd should never appear in Present — it's not in the catalog")
+		}
+	}
+	for _, e := range m.Absent {
+		if e.Name == "sd" {
+			t.Error("sd should never appear in Absent — it's not in the catalog")
+		}
+	}
+}
+
 // TestMarshalSchema — marshalled output must conform to the v2 envelope
 // shape: weir_probe.{version, present[], absent[]} with replaces and pkg
 // rendered as JSON null when empty (not as the string "").

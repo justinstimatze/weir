@@ -298,7 +298,13 @@ var gotchas = []gotcha{
 		Line: "fd: hides gitignored and hidden files BY DEFAULT (unlike `find`). Use `fd -HI PATTERN` (or `--hidden --no-ignore`) to include them.",
 	},
 	{
-		Tool: "sd",
+		// Tool deliberately left empty (not "sd") as of 2026-09-13: sd was
+		// dropped from probe's catalog, so it's never in Present and a
+		// Tool: "sd" gate would silently stop this from ever rendering. A
+		// model can still reach for sd from its own training knowledge
+		// regardless of whether weir's manifest recommends it — arguably
+		// more likely to hit exactly this footgun once nothing primes it
+		// on the safe usage first — so the warning stays unconditional.
 		Rule: "sd-replacement-shell-var",
 		// Reported 2026-07-28, measured against sd 1.0.0. Orthogonal to
 		// the in-place entry below: the write is intended, the CONTENT is
@@ -306,7 +312,7 @@ var gotchas = []gotcha{
 		Line: "sd: the REPLACEMENT string has its own `$` grammar — `$NAME` is a capture-group reference, and an unmatched one expands to EMPTY, not an error. `sd 'x' 'a$HERE/b'` emits `a/b`, exit 0. Double the `$` for a literal (`$$NAME`), or use double quotes and let the shell expand it first.",
 	},
 	{
-		Tool: "sd",
+		// Tool left empty — see the note on the entry above; same reason.
 		Rule: "sd-in-place-write",
 		// Sibling hazard to the rg case: `sd modifies files in-place by
 		// default` (per `sd --help`), unlike sed which needs `-i`. This

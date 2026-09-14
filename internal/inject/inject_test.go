@@ -145,6 +145,23 @@ func TestRenderIdiomsBudgetCap(t *testing.T) {
 	}
 }
 
+// TestSDGotchasAlwaysSurface — the two sd gotchas were deliberately
+// un-gated (Tool: "") 2026-09-13 when sd was dropped from probe's catalog:
+// sd can never appear in Present anymore, and a lingering Tool: "sd" gate
+// would have silently zeroed both warnings out. A model can still reach for
+// sd from its own training knowledge regardless of weir's manifest, so the
+// warning must survive that removal.
+func TestSDGotchasAlwaysSurface(t *testing.T) {
+	m := probe.Manifest{Version: 2} // no present tools at all, sd included
+	got := renderGotchas(m.Present, nil, noHist, alwaysMode)
+	if !strings.Contains(got, "REPLACEMENT string") {
+		t.Errorf("sd-replacement-shell-var gotcha should always surface; got: %q", got)
+	}
+	if !strings.Contains(got, "modifies files IN PLACE") {
+		t.Errorf("sd-in-place-write gotcha should always surface; got: %q", got)
+	}
+}
+
 // TestRenderGotchasFilteredByPresentTool — a Tool-gated gotcha only
 // surfaces when that tool is present; a Tool-less gotcha (command-not-found)
 // always surfaces.

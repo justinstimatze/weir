@@ -108,6 +108,17 @@ var positives = []struct {
 	// Same shape, but the pipe form — escalation isn't gated on a file
 	// operand any more than the base rule is.
 	{`printf 'x\n' | sd 'x' 'a$HERE/b'`, "sd-replacement-shell-var-no-capture-group"},
+	// Third sighting, 2026-09-13 from aipotluck.org: the escalation used
+	// to Suppress against the WHOLE command string, so any unrelated `(`
+	// anywhere else — a subshell, a command substitution, a quoted paren
+	// in an echo, a heredoc body — falsely suppressed a block that should
+	// have fired. All four reproduced live against the pre-fix rule; all
+	// four must still block now that the check is scoped to the sd call's
+	// own search-pattern argument.
+	{`(cd /tmp); sd '\$PY -m pyright > ' '$PY -m pyright --warnings > ' /tmp/x.sh`, "sd-replacement-shell-var-no-capture-group"},
+	{`echo 'a(b'; sd '\$PY -m pyright > ' '$PY -m pyright --warnings > ' /tmp/x.sh`, "sd-replacement-shell-var-no-capture-group"},
+	{`true $(date); sd '\$PY -m pyright > ' '$PY -m pyright --warnings > ' /tmp/x.sh`, "sd-replacement-shell-var-no-capture-group"},
+	{"python - <<'PY'\nprint(Path(\"x\"))\nPY\nsd '\\$PY -m pyright > ' '$PY -m pyright --warnings > ' /tmp/x.sh", "sd-replacement-shell-var-no-capture-group"},
 	// pgrep -f matches the bash -c shell running the command, so a wait
 	// loop never exits — v0.1.7, reported from lexicon with two orphaned
 	// loops days old. Gated on the loop/kill pairing.

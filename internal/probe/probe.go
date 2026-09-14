@@ -89,7 +89,13 @@ var catalog = []tool{
 	{"rg", "grep", "ripgrep", ""},
 	{"fd", "find", "fd-find", "fdfind"},
 	{"bat", "cat", "bat", "batcat"},
-	{"sd", "sed", "sd", ""},
+	// sd deliberately NOT recommended here as of 2026-09-13: internal/suggest's
+	// six sd-* rules stay fully active as a backstop (a model can still reach
+	// for sd from its own training knowledge regardless of weir's manifest),
+	// but weir stops actively endorsing it after three field-reported sightings
+	// of the same replacement-var footgun, the third of which was a detection
+	// bug in the block escalation meant to have already closed it. See
+	// CHANGELOG.md's v0.1.12 entry.
 	{"mlr", "awk", "miller", ""},
 	{"eza", "ls", "eza", ""},
 	{"exa", "ls", "", ""},
