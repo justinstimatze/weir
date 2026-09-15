@@ -622,6 +622,36 @@ var Rules = []Rule{
 		Fix:      "A pipeline exits with its LAST stage's status, so `CMD | tail`/`| head` reports the trimmer's success and a failed CMD reads as exit 0 — a rejected `git push` or a `go install` that printed \"does not contain package\" both report success to a background runner, a `set -e` script, or a CI step. `2>&1` does not help; it just gives `tail` more lines to discard. Use `set -o pipefail`, or redirect and read the status directly: `CMD > out.log 2>&1; echo \"exit: $?\"`. When the command's job is to produce or replace an artifact, check the artifact — a `stat` timestamp or a `--version` is a measurement, a status is a claim. Rewrite the command and retry.",
 		Action:   "block",
 	},
+	// --- a status that is green for a run nobody finished ---------------------
+	// `gh run watch --exit-status` exits 0 on a CANCELLED run. This is not a bug
+	// in gh; its own help is exact about the contract and the contract is the
+	// trap: "Exit with non-zero status if run fails". A cancelled run did not
+	// fail. It produced no verdict at all, and no-verdict takes the same exit
+	// code as success.
+	//
+	// The shape it bites in is the one where a status is consumed by something
+	// that trusts it and nobody reads the output: a background runner, a CI
+	// step, an agent harness printing its own "completed (exit code 0)". Same
+	// escalation logic as pipe-eats-exit-status above, and the same reason for
+	// `block` over `advise` — the advisory arrives after the wrong verdict has
+	// already been believed.
+	//
+	// Reported 2026-09-15 (aipotluck.org). Two CI runs on `develop` were
+	// cancelled by a third merge entering the same concurrency group; a watch on
+	// them reported exit 0, which was briefly taken as proof develop was green.
+	// `gh run view <id> --json conclusion` said `cancelled` for both. The
+	// underlying cancellation was CUR-1286; this rule is about the instrument
+	// that failed to report it.
+	//
+	// Suppressed when the command already reads a conclusion, which is the
+	// recommended rewrite and must not fire on itself.
+	{
+		Name:     "gh-run-watch-exit-status",
+		Pattern:  regexp.MustCompile(`\bgh` + argGap + `run` + argGap + `watch\b[^|\n;]*--exit-status\b`),
+		Suppress: regexp.MustCompile(`--json[^\n]*conclusion|\bconclusion\b`),
+		Fix:      "`gh run watch --exit-status` exits 0 on a CANCELLED run — its own help says \"Exit with non-zero status if run fails\", and a cancelled run did not fail, it produced no verdict. A run killed by a concurrency group, a cancelled queue entry, or a manual stop all report success to a background runner, a `set -e` script, or an agent harness's own \"exit code 0\" summary. Read the verdict instead of the exit code: `gh run watch ID >/dev/null 2>&1; gh run view ID --json conclusion --jq .conclusion` and branch on the value, treating anything that is not `success` as red — `cancelled` and `timed_out` are the absence of a verdict, not a lenient one. Rewrite the command and retry.",
+		Action:   "block",
+	},
 	{
 		Name:     "pipe-status-echo",
 		Pattern:  regexp.MustCompile(`\|\s*(?:tail|head|grep|rg|sed|awk|jq|wc|sort|uniq|tee)\b[^\n;&]*(?:\n|;)\s*echo\b[^\n]*\$\?`),

@@ -150,6 +150,11 @@ var positives = []struct {
 	{"go install github.com/justinstimatze/defn@main 2>&1 | tail -10", "pipe-eats-exit-status"},
 	{"pip install -r requirements.txt 2>&1 | tail -20", "pipe-eats-exit-status"},
 	{"rsync -a src/ host:/dest 2>&1 | grep -i error", "pipe-eats-exit-status"},
+	// `gh run watch --exit-status` is green on a CANCELLED run — reported
+	// 2026-09-15 (aipotluck.org), two concurrency-cancelled develop runs read
+	// as success. Suppressed once the command reads a conclusion instead.
+	{"gh run watch 34925601264 --exit-status", "gh-run-watch-exit-status"},
+	{"gh run watch --exit-status $ID > /dev/null 2>&1", "gh-run-watch-exit-status"},
 	// The sharper variant: an EXPLICIT `echo $?` that reads the filter's status.
 	{"go test ./... -count=1 | rg -v '^ok '\necho \"GOTEST_EXIT=$?\"", "pipe-status-echo"},
 	{"go install ./... 2>&1 | tail -10\necho \"EXIT=$?\"", "pipe-status-echo"},
@@ -188,6 +193,11 @@ var negatives = []string{
 	"cat /etc/hosts > /tmp/copy",
 	"echo hello",
 	"git log --oneline | head -20",
+	// gh-run-watch-exit-status negatives. The recommended rewrite must not fire
+	// on itself, and a plain wait with no --exit-status claims no verdict at all.
+	"gh run watch $ID >/dev/null 2>&1; gh run view $ID --json conclusion --jq .conclusion",
+	"gh run watch 34925601264",
+	"gh run view 34925601264 --json conclusion,status",
 	// git staging guard negatives — explicit paths and tracked-only must NOT block.
 	"git add server.py",
 	"git add foo.py bar.py",
