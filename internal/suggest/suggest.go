@@ -29,10 +29,25 @@ import (
 )
 
 type hookInput struct {
-	ToolName  string `json:"tool_name"`
-	ToolInput struct {
+	ToolName       string `json:"tool_name"`
+	PermissionMode string `json:"permission_mode"`
+	ToolInput      struct {
 		Command string `json:"command"`
 	} `json:"tool_input"`
+	RawToolInput map[string]any `json:"-"`
+}
+
+// rewriteOutput applies a mechanical rewrite and lets the command run. Only
+// emitted under bypassPermissions, where "allow" grants nothing the session
+// does not already have; any other mode gets the block.
+type rewriteOutput struct {
+	HookSpecificOutput struct {
+		HookEventName            string         `json:"hookEventName"`
+		PermissionDecision       string         `json:"permissionDecision"`
+		PermissionDecisionReason string         `json:"permissionDecisionReason"`
+		UpdatedInput             map[string]any `json:"updatedInput"`
+		AdditionalContext        string         `json:"additionalContext"`
+	} `json:"hookSpecificOutput"`
 }
 
 // adviseOutput is the JSON shape for advisory (non-blocking) suggestions:
@@ -67,10 +82,19 @@ func runInner(_ []string, stdin io.Reader, stdout io.Writer) int {
 	if os.Getenv("WEIR_SUGGEST_SKIP") != "" {
 		return 0
 	}
-	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
+	raw, err := io.ReadAll(stdin)
+	if err != nil {
 		return 0
 	}
+	var in hookInput
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return 0
+	}
+	var whole struct {
+		ToolInput map[string]any `json:"tool_input"`
+	}
+	_ = json.Unmarshal(raw, &whole)
+	in.RawToolInput = whole.ToolInput
 	if in.ToolName != "Bash" || in.ToolInput.Command == "" {
 		return 0
 	}
@@ -88,6 +112,35 @@ func runInner(_ []string, stdin io.Reader, stdout io.Writer) int {
 			blocks = append(blocks, r)
 		} else {
 			advises = append(advises, r)
+		}
+	}
+
+	if len(blocks) > 0 && in.PermissionMode == "bypassPermissions" && in.RawToolInput != nil {
+		if next, ok := applyRewrites(in.ToolInput.Command, blocks); ok && len(blockHits(Match(next))) == 0 {
+			names := make([]string, 0, len(blocks))
+			for _, r := range blocks {
+				names = append(names, r.Name)
+			}
+			updated := make(map[string]any, len(in.RawToolInput))
+			for k, v := range in.RawToolInput {
+				updated[k] = v
+			}
+			updated["command"] = next
+			var out rewriteOutput
+			out.HookSpecificOutput.HookEventName = "PreToolUse"
+			out.HookSpecificOutput.PermissionDecision = "allow"
+			out.HookSpecificOutput.PermissionDecisionReason = "[weir-suggest] applied " + strings.Join(names, ", ")
+			out.HookSpecificOutput.UpdatedInput = updated
+			ctx := fmt.Sprintf("[weir-suggest] rewrote this command (%s) and ran it as:\n%s", strings.Join(names, ", "), next)
+			for _, r := range advises {
+				ctx += fmt.Sprintf("\n- [%s] %s", r.Name, r.Fix)
+			}
+			out.HookSpecificOutput.AdditionalContext = ctx
+			if b, err := json.Marshal(out); err == nil {
+				_, _ = stdout.Write(b)
+				_, _ = stdout.Write([]byte("\n"))
+				return 0
+			}
 		}
 	}
 
@@ -136,4 +189,14 @@ func runInner(_ []string, stdin io.Reader, stdout io.Writer) int {
 	_, _ = stdout.Write(b)
 	_, _ = stdout.Write([]byte("\n"))
 	return 0
+}
+
+func blockHits(hits []Rule) []Rule {
+	var out []Rule
+	for _, r := range hits {
+		if r.Action == "block" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
