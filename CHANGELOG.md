@@ -2,27 +2,30 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
-## Unreleased
+## v0.1.13 — 2026-11-18
 
 ### Added
+- Under `bypassPermissions`, a blocked command whose every hit has a mechanical rewrite now runs
+  rewritten, and the model is told what ran. Rewrites exist for `cat F | tool` -> `< F tool`,
+  `which X` -> `command -v X`, and `rg -rn` -> `rg -n`. Other permission modes still deny.
+- `gh-run-watch-exit-status` (block): `gh run watch --exit-status` exits 0 on a cancelled or
+  timed-out run. Read `gh run view ID --json conclusion` instead.
 - `sd-in-place-write-piped` (block): `sd PAT REP FILE | ...` rewrites FILE and pipes an empty
-  stream onward, so a downstream search reports a false negative.
-- `sd-n-is-max-replacements` (advise, plus a SessionStart gotcha line): sd's `-n` is
-  `--max-replacements`, not sed's `-n`.
-- `git-commit-all` (advise): `git commit -a`/`-am`/`--all` takes every tracked edit, including
-  a concurrent session's. Skipped inside quotes and heredocs via a new opt-in `QuoteGuard` field,
-  so commit messages that mention the flag don't trip it.
-- Block text and README now point at `weir review CMD`: the hook's verdict is in its JSON, not its
-  exit status.
+  stream onward.
+- `git-commit-all` (advise): `git commit -a`, `-am` and `--all` commit every tracked edit,
+  including another session's in the same worktree. Mentions inside quotes and heredocs are
+  ignored.
+- `sd-n-is-max-replacements` (advise, plus a SessionStart gotcha line): sd's `-n` caps
+  replacements. sd has no line addressing.
+- Block messages and the README point at `weir review CMD`. The hook always exits 0, and its
+  verdict is in the JSON.
 
 ### Changed
-- `rg-h-is-help` blocks instead of advising, per the field report of the advice being ignored
-  in flight. Its fix text and gotcha line named `-N` as no-filename; `-N` is
-  `--no-line-number`, so both now say `-I`.
-- `pkill-f-self-match` blocks instead of advising: the advice was run anyway and the shell
-  killed itself.
-- `rg-r-misfire-bundled` has a mechanical rewrite (`rg -rn` -> `rg -n`) and runs rewritten under
-  `bypassPermissions` instead of blocking.
+- `pkill-f-self-match` and `rg-h-is-help` now block. Both were advisory.
+
+### Fixed
+- The `rg -h` advice and gotcha line recommended `-N` to drop filenames. `-N` is
+  `--no-line-number`. Both now say `-I`.
 
 ## v0.1.12 — 2026-09-14
 
