@@ -25,6 +25,10 @@ type Rule struct {
 	Fix      string
 	Action   string // "" | "advise" (default) | "block"
 	OS       string // "" (default, fires everywhere) | a runtime.GOOS value
+	// QuoteGuard skips a match inside a quoted string or heredoc body, as
+	// block rules always do. For advisory rules whose trigger text is
+	// likely to appear in commit messages written about it.
+	QuoteGuard bool
 }
 
 // Shell-word fragments, shared by the rules that count positional arguments.
@@ -222,6 +226,16 @@ var Rules = []Rule{
 		Fix:     "`git add -A` / `--all` / `.` stage EVERY untracked file too — stray build artifacts, debug dumps, or secrets slip into the commit. Stage explicit paths instead: `git add path/to/file ...`, or `git add -u` to restage only already-tracked changes. Rewrite with the specific paths and retry.",
 		Action:  "block",
 	},
+	{
+		// FIELD_REPORT_git-add-all-verdict-channel-and-commit-a-gap.md: with
+		// sibling worktrees and concurrent sessions on one repo, `commit -a`
+		// takes another session's tracked edits under your message. Advisory:
+		// no untracked-file path, and a solo checkout is a legitimate use.
+		Name:       "git-commit-all",
+		Pattern:    regexp.MustCompile(cmdPos + `git` + argGap + `commit\b[^|\n;&'"]*?` + argGap + `(?:-[a-zA-Z]*a[a-zA-Z]*|--all)(?:\s|$)`),
+		Fix:        "`git commit -a` / `-am` stages EVERY tracked modification in the worktree, not just the ones you meant. Under concurrent sessions or sibling worktrees on one repo, that commits someone else's in-progress edits under your message. Stage the paths you mean (`git add path/to/file ...`), check `git diff --cached`, then `git commit -m '...'`.",
+		QuoteGuard: true,
+	},
 	// --- silent-corruption trap: rg's -r is --replace, not recursive -------
 	// In rg, `-r` is `--replace`, NOT recursive (rg recurses by default).
 	// `rg -rn PATTERN path` — the natural `grep -rn` muscle-memory reach
@@ -335,6 +349,23 @@ var Rules = []Rule{
 		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
 		Fix:      "sd writes IN PLACE + the replacement is EMPTY, so this DELETES the matched text from FILE rather than substituting anything. Stripping a section to read what's left is a display job: pipe it — `cat FILE | sd PAT ''` (safe, no write). To persist a deletion, confirm with `sd -p PAT '' FILE` first, or use an editor. Rewrite and retry.",
 		Action:   "block",
+	},
+	{
+		// FIELD_REPORT_sd-in-place-piped-into-search.md: the 3-arg form writes
+		// nothing to stdout, so a pipe straight after the file operand is a
+		// contradiction in the command text, not a guess about intent.
+		Name:     "sd-in-place-write-piped",
+		Pattern:  regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + shWord + argGap + shWord + argGap + shFile + `[ \t]*\|`),
+		Suppress: regexp.MustCompile(`\bsd\b` + shGap + `\s(?:-p\b|--preview\b)`),
+		Fix:      "sd writes IN PLACE and prints NOTHING to stdout, so the pipe after it carries an empty stream: every downstream stage succeeds on no input, and a search reports zero matches that look like a real negative. Meanwhile FILE was rewritten. Use `cat FILE | sd PAT REP | ...`. Rewrite and retry.",
+		Action:   "block",
+	},
+	{
+		// FIELD_REPORT_sd-n-flag-collision-with-sed.md: sed's `-n` muscle
+		// memory. `sd -n 5 pat rep f` parses and silently caps replacements.
+		Name:    "sd-n-is-max-replacements",
+		Pattern: regexp.MustCompile(cmdPos + `sd\b` + shGap + argGap + `(?:-n\b|--max-replacements\b)`),
+		Fix:     "sd's `-n` is `--max-replacements LIMIT`, NOT sed's `-n` (suppress auto-print). sd has no line addressing: `sd -n 5 PAT REP FILE` silently caps replacements at 5. For a line range use `sed -n 'A,Bp' FILE`, or `rg -n`/`head`/`tail`.",
 	},
 	// --- silent-corruption trap: sd's replacement has its own $ grammar ---
 	// Orthogonal to the four in-place rules above: the write was intended,
@@ -834,7 +865,7 @@ func Match(cmd string) []Rule {
 		if r.Suppress != nil && r.Suppress.MatchString(cmd) {
 			continue
 		}
-		if r.Action == "block" && isInsideShellString(cmd, loc[0]) {
+		if (r.Action == "block" || r.QuoteGuard) && isInsideShellString(cmd, loc[0]) {
 			continue
 		}
 		out = append(out, r)

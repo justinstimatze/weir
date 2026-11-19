@@ -155,7 +155,7 @@ func runInner(_ []string, stdin io.Reader, stdout io.Writer) int {
 				lines = append(lines, fmt.Sprintf("- [%s] %s", r.Name, r.Fix))
 			}
 		}
-		lines = append(lines, "(To bypass this block for the rest of the session, set WEIR_SUGGEST_SKIP=1 in the env.)")
+		lines = append(lines, "(To bypass this block for the rest of the session, set WEIR_SUGGEST_SKIP=1 in the env. To check a command without running it, `weir review 'CMD'`: the hook's verdict is in its JSON, not its exit status.)")
 
 		var out blockOutput
 		out.HookSpecificOutput.HookEventName = "PreToolUse"

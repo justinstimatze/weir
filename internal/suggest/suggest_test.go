@@ -126,6 +126,11 @@ var positives = []struct {
 	{`while pgrep -f adjudicate-spans >/dev/null; do sleep 20; done`, "pgrep-f-self-match"},
 	{`pgrep -af "until ! pgrep" | rg -o "^[0-9]+" | while read p; do kill $p; done`, "pgrep-f-self-match"},
 	{`pgrep --full myjob | xargs kill`, "pgrep-f-self-match"},
+	{`git commit -am 'wip'`, "git-commit-all"},
+	{`git commit -a -m wip`, "git-commit-all"},
+	{`cd x && git commit --all -m wip`, "git-commit-all"},
+	{`sd 'foo' ' ' notes.md | rg -c foo`, "sd-in-place-write-piped"},
+	{`sd -n 5 foo bar f.txt`, "sd-n-is-max-replacements"},
 	// pkill -f is ungated: there is no safe one-shot form.
 	{`pkill -f fetch-zim-article`, "pkill-f-self-match"},
 	{`pkill -9 -f 'python worker.py'`, "pkill-f-self-match"},
@@ -343,6 +348,13 @@ var ruleNegatives = []struct {
 	// literal-dollar escape, `$1` is a numeric group ref, and a defined
 	// named group is the legitimate use of the feature.
 	{`sd 'x' "a$HERE/b" file.txt`, "sd-replacement-shell-var"},
+	{`git commit -m 'stop using git commit -am here'`, "git-commit-all"},
+	{"git commit -q -F - <<'EOF'\nwithout this a `git commit -am` takes them\nEOF", "git-commit-all"},
+	{`git commit --amend -m x`, "git-commit-all"},
+	{`git add -u && git commit -m x`, "git-commit-all"},
+	{`cat notes.md | sd 'foo' ' ' | rg -c foo`, "sd-in-place-write-piped"},
+	{`sd -p 'foo' ' ' notes.md | rg foo`, "sd-in-place-write-piped"},
+	{`sed -n '5,9p' f.txt`, "sd-n-is-max-replacements"},
 	{`sd 'x' 'a$$HERE/b' file.txt`, "sd-replacement-shell-var"},
 	{`sd '(x)' 'got:$1' file.txt`, "sd-replacement-shell-var"},
 	{`sd '(x)' 'got:${1}' file.txt`, "sd-replacement-shell-var"},

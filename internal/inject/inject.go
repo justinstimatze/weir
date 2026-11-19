@@ -312,6 +312,11 @@ var gotchas = []gotcha{
 		Line: "sd: the REPLACEMENT string has its own `$` grammar — `$NAME` is a capture-group reference, and an unmatched one expands to EMPTY, not an error. `sd 'x' 'a$HERE/b'` emits `a/b`, exit 0. Double the `$` for a literal (`$$NAME`), or use double quotes and let the shell expand it first.",
 	},
 	{
+		// Tool left empty for the same reason as the sd entries around it.
+		Rule: "sd-n-is-max-replacements",
+		Line: "sd: `-n` is `--max-replacements`, NOT sed's `-n`. sd has no line addressing; `sd -n 5 PAT REP FILE` parses fine and silently caps replacements at 5. For a line range use `sed -n 'A,Bp'`, `rg -n`, `head` or `tail`.",
+	},
+	{
 		// Tool left empty — see the note on the entry above; same reason.
 		Rule: "sd-in-place-write",
 		// Sibling hazard to the rg case: `sd modifies files in-place by

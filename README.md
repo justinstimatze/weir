@@ -116,7 +116,7 @@ it heavily:
 | `weir uninstall` | remove weir's hooks; leaves unrelated hooks untouched |
 | `weir status` | report which weir hooks are registered + suggest missing-apt tools |
 | `weir measure` | re-mine `~/.claude/projects/**/*.jsonl` and diff against the embedded baseline (modern-vs-classic tool counts, per-rule hit counts) |
-| `weir review CMD` | interactive spot-check — given a bash command, print whether weir would block, advise, or stay silent (use for rule tuning) |
+| `weir review CMD` | interactive spot-check — given a bash command, print whether weir would block, advise, or stay silent (use for rule tuning). Use this, not the hook's exit status, to ask "is this blocked": `weir suggest` exits 0 and puts the decision in its JSON |
 | `weir build-idioms` | maintainer-only: parse a tldr-pages clone into `internal/idioms/idioms.json` (then rebuild the binary to re-embed) |
 
 ## How weir avoids being annoying

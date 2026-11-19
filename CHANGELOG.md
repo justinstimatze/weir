@@ -2,6 +2,25 @@
 
 All notable changes to weir are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are git tags.
 
+## Unreleased
+
+### Added
+- `sd-in-place-write-piped` (block): `sd PAT REP FILE | ...` rewrites FILE and pipes an empty
+  stream onward, so a downstream search reports a false negative.
+- `sd-n-is-max-replacements` (advise, plus a SessionStart gotcha line): sd's `-n` is
+  `--max-replacements`, not sed's `-n`.
+- `git-commit-all` (advise): `git commit -a`/`-am`/`--all` takes every tracked edit, including
+  a concurrent session's. Skipped inside quotes and heredocs via a new opt-in `QuoteGuard` field,
+  so commit messages that mention the flag don't trip it.
+- Block text and README now point at `weir review CMD`: the hook's verdict is in its JSON, not its
+  exit status.
+
+### Changed
+- `pkill-f-self-match` blocks instead of advising: the advice was run anyway and the shell
+  killed itself.
+- `rg-r-misfire-bundled` has a mechanical rewrite (`rg -rn` -> `rg -n`) and runs rewritten under
+  `bypassPermissions` instead of blocking.
+
 ## v0.1.12 — 2026-09-14
 
 Third field-reported sighting of the `sd` replacement-var footgun, from aipotluck.org: the block
