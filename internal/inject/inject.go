@@ -288,7 +288,7 @@ var gotchas = []gotcha{
 		Rule: "rg-h-is-help",
 		// Reported 2026-07-29 while extracting URLs from markdown files.
 		// grep's -h is --no-filename; rg's -h is --help.
-		Line: "rg: `-h` is `--help`, NOT `--no-filename` (that's `-I`/`-N`). `rg -oh PAT files` prints usage text and exits 0 — pattern and files never read. Use `rg -o -N PAT files`.",
+		Line: "rg: `-h` is `--help`, NOT `--no-filename` (that's `-I`; `-N` is `--no-line-number`). `rg -oh PAT files` prints usage text and exits 0 — pattern and files never read. Use `rg -o -I PAT files`.",
 	},
 	{
 		Tool: "fd",

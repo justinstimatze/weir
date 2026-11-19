@@ -79,6 +79,22 @@ func TestRewriteNeverEditsQuotedText(t *testing.T) {
 	}
 }
 
+func TestRgHBlocksButNotInsideQuotes(t *testing.T) {
+	if hits := blockHits(Match(`rg -oh 'https?://[^ ]+' a.md b.md`)); len(hits) != 1 || hits[0].Name != "rg-h-is-help" {
+		t.Errorf("rg -oh should block; got %v", hits)
+	}
+	for _, c := range []string{
+		`git commit -m 'rg -oh prints help, use rg -o -I'`,
+		"git commit -F - <<'EOF'\nrg -oh PAT files prints usage\nEOF",
+		`rg -h`,
+		`rg -o -I PAT a.md b.md`,
+	} {
+		if hits := blockHits(Match(c)); len(hits) != 0 {
+			t.Errorf("%q must not block; got %v", c, hits)
+		}
+	}
+}
+
 func TestPkillFullBlocksButNotInsideQuotes(t *testing.T) {
 	if hits := blockHits(Match("pkill -f stope-api")); len(hits) != 1 || hits[0].Name != "pkill-f-self-match" {
 		t.Errorf("pkill -f should block; got %v", hits)

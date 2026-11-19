@@ -16,6 +16,9 @@ All notable changes to weir are documented here. Format loosely follows [Keep a 
   exit status.
 
 ### Changed
+- `rg-h-is-help` blocks instead of advising, per the field report of the advice being ignored
+  in flight. Its fix text and gotcha line named `-N` as no-filename; `-N` is
+  `--no-line-number`, so both now say `-I`.
 - `pkill-f-self-match` blocks instead of advising: the advice was run anyway and the shell
   killed itself.
 - `rg-r-misfire-bundled` has a mechanical rewrite (`rg -rn` -> `rg -n`) and runs rewritten under

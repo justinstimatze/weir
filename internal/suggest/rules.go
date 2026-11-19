@@ -558,7 +558,11 @@ var Rules = []Rule{
 	{
 		Name:    "rg-h-is-help",
 		Pattern: regexp.MustCompile(cmdPos + `rg\b[^|\n;&]*` + argGap + `(?:-[a-z]*h[a-z]+\b|-[a-z]+h[a-z]*\b|-h` + argGap + `['"a-zA-Z_./~])`),
-		Fix:     "In rg, `-h` is `--help`, NOT `--no-filename` — that is `-I` or `-N`. `rg -oh PAT files` prints the usage text on stdout with exit 0; the pattern and file list are never read, and piped into `sort`/`head` it reads as a clean result set that happens to contain no matches. Use `rg -o -N PAT files` (or `-I`). `-o` alone is enough for a single file.",
+		Fix:     "In rg, `-h` is `--help`, NOT `--no-filename` — that is `-I` (`-N` is `--no-line-number`, which keeps filenames). `rg -oh PAT files` prints the usage text on stdout with exit 0; the pattern and file list are never read, and piped into `sort`/`head` it reads as a clean result set that happens to contain no matches. Use `rg -o -I PAT files`. `-o` alone is enough for a single file. Rewrite the command and retry.",
+		// Blocks since 2026-11-18, per FIELD_REPORT_rg-h-advisory-ignored-in-flight.md:
+		// as advice it was read and run anyway. Block hits inside quotes and
+		// heredocs are skipped, so writing about `rg -oh` stays allowed.
+		Action: "block",
 	},
 	// --- silent-scope trap: grep -L's meaning does not survive to rg ------
 	// Found by data/flag_overlap.py, a systematic sweep of every --help
