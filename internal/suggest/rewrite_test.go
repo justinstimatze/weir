@@ -28,6 +28,8 @@ func TestRewriteAppliesUnderBypass(t *testing.T) {
 		"cd /x && cat a.log | rg -n err":       "cd /x && < a.log rg -n err",
 		"which python3":                        "command -v python3",
 		"cat f | head -3; which go && echo ok": "< f head -3; command -v go && echo ok",
+		"rg -rn TODO internal/":                "rg -n TODO internal/",
+		"rg -i -rl foo . && echo done":         "rg -i -l foo . && echo done",
 	}
 	for in, want := range cases {
 		got := runHook(t, map[string]any{
@@ -74,5 +76,22 @@ func TestRewriteNeverEditsQuotedText(t *testing.T) {
 	want := "< a grep x && git commit -m 'first; cat f | grep y'"
 	if !ok || got != want {
 		t.Errorf("got %q (%v), want %q", got, ok, want)
+	}
+}
+
+func TestPkillFullBlocksButNotInsideQuotes(t *testing.T) {
+	if hits := blockHits(Match("pkill -f stope-api")); len(hits) != 1 || hits[0].Name != "pkill-f-self-match" {
+		t.Errorf("pkill -f should block; got %v", hits)
+	}
+	if hits := blockHits(Match(`rg -c 'pkill -f' internal/`)); len(hits) != 0 {
+		t.Errorf("a quoted mention must not block; got %v", hits)
+	}
+	got := runHook(t, map[string]any{
+		"tool_name":       "Bash",
+		"permission_mode": "bypassPermissions",
+		"tool_input":      map[string]any{"command": "pkill -f stope-api"},
+	})
+	if got.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Errorf("pkill -f has no rewrite, so it denies even under bypass; got %q", got.HookSpecificOutput.PermissionDecision)
 	}
 }

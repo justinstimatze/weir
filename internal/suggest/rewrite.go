@@ -17,11 +17,15 @@ var (
 	// `which NAME` -> `command -v NAME`, only with no flags in between: `which
 	// -a` has no `command -v` equivalent.
 	whichRewrite = regexp.MustCompile(`(` + cmdPos + `)which[ \t]+([A-Za-z_][\w.-]*)`)
+	// `rg -rn` -> `rg -n`: the bundled -r is grep's recursion habit, and rg
+	// recurses by default, so dropping it is the whole fix.
+	rgBundledRewrite = regexp.MustCompile(`(\brg\b[^|\n;&]*` + argGap + `)-r([nliwcv])\b`)
 )
 
 var rewrites = map[string]func(string) (string, bool){
-	"uuoc":               func(c string) (string, bool) { return rewriteAll(c, uuocRewrite, "${1}< ${2} ${3}") },
-	"which-vs-command-v": func(c string) (string, bool) { return rewriteAll(c, whichRewrite, "${1}command -v ${2}") },
+	"uuoc":                 func(c string) (string, bool) { return rewriteAll(c, uuocRewrite, "${1}< ${2} ${3}") },
+	"which-vs-command-v":   func(c string) (string, bool) { return rewriteAll(c, whichRewrite, "${1}command -v ${2}") },
+	"rg-r-misfire-bundled": func(c string) (string, bool) { return rewriteAll(c, rgBundledRewrite, "${1}-${2}") },
 }
 
 // rewriteAll replaces every match outside a shell string. It reports false

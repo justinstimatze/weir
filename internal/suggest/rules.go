@@ -503,7 +503,11 @@ var Rules = []Rule{
 	{
 		Name:    "pkill-f-self-match",
 		Pattern: regexp.MustCompile(`\bpkill\b[^|\n;&]*` + argGap + `(?:-[a-zA-Z]*f\b|--full\b)`),
-		Fix:     "`pkill -f PATTERN` matches full command lines, and under Claude Code the `bash -c` shell running this command has the pattern text in its own cmdline — so this kills its own shell, usually before you learn whether it killed the target. Ungated, unlike the pgrep case: there is no safe one-shot form. Capture the PID when you start the job (`cmd & PID=$!`) and `kill $PID`, or match the process NAME with `pkill foo` (no `-f`).",
+		Fix:     "`pkill -f PATTERN` matches full command lines, and under Claude Code the `bash -c` shell running this command has the pattern text in its own cmdline — so this kills its own shell, usually before you learn whether it killed the target. Ungated, unlike the pgrep case: there is no safe one-shot form. Capture the PID when you start the job (`cmd & PID=$!`) and `kill $PID`, or match the process NAME with `pkill foo` (no `-f`). Rewrite the command and retry.",
+		// Blocks since 2026-11-18: as advice it was read and run anyway, and
+		// the shell killed itself (exit 144) in a stope session. Match skips
+		// block hits inside quotes, so `rg 'pkill -f' src/` stays allowed.
+		Action: "block",
 	},
 	// --- silent-corruption trap: rg's -h is --help ------------------------
 	// In grep, `-h` is `--no-filename`, and `grep -oh PAT f1 f2` is the
